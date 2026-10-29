@@ -1,0 +1,13 @@
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+*.tmp
+
+# Local scratch notes
+scratch/doc_text.txt
