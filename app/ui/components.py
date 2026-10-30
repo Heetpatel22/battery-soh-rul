@@ -27,15 +27,28 @@ def inject_theme():
         render_html(f"<style>{css}</style>")
 
 
-def render_topbar(active_page: str = "Overview"):
-    """Enterprise top bar for CellGuard with instant dual-navigation links."""
+def get_health_grade(soh: float) -> tuple:
+    """Return friendly human grade tuple: (grade_label, badge_class, description, hex_color)."""
+    s = float(soh)
+    if s >= 90.0:
+        return ("Grade A+", "cg-grade-a", "Excellent &bull; Like New", "#10B981")
+    elif s >= 80.0:
+        return ("Grade A", "cg-grade-a", "Good &bull; Normal Daily Drive", "#10B981")
+    elif s >= 70.0:
+        return ("Grade B", "cg-grade-b", "Fair &bull; Noticeable Range Drop", "#F59E0B")
+    else:
+        return ("Grade C (EOL)", "cg-grade-c", "Replace Soon &bull; Service Needed", "#EF4444")
+
+
+def render_topbar(active_page: str = "Launch Dashboard"):
+    """Enterprise top bar for CellGuard with instant dual-navigation links and friendly status."""
     nav_items = [
-        ("Overview", "/", "🏠"),
-        ("Predict Cycle", "/page_predict_view", "⚡"),
-        ("Battery Life & RUL", "/page_life_rul_view", "📈"),
-        ("Gap Filler", "/page_gap_filler_view", "🔬"),
-        ("Model Performance", "/page_performance_view", "📊"),
-        ("EE Background", "/page_ee_bg_view", "🔌"),
+        ("Launch Dashboard", "/", "🚀"),
+        ("Battery Health Check", "/page_predict_view", "🩺"),
+        ("Lifespan & Range", "/page_life_rul_view", "⏳"),
+        ("Data Gap Filler", "/page_gap_filler_view", "🧩"),
+        ("Accuracy & Trust", "/page_performance_view", "🎯"),
+        ("How Batteries Work", "/page_ee_bg_view", "💡"),
     ]
 
     links_html = []
@@ -50,8 +63,8 @@ def render_topbar(active_page: str = "Overview"):
     topbar_html = f"""
     <div class="cg-topbar">
       <div style="display: flex; align-items: center; gap: 12px;">
-        <div style="width: 28px; height: 28px; background: rgba(34, 211, 238, 0.1); border: 1px solid rgba(34, 211, 238, 0.3); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <div style="width: 32px; height: 32px; background: rgba(34, 211, 238, 0.12); border: 1px solid rgba(34, 211, 238, 0.35); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
             <rect x="2" y="7" width="16" height="12" rx="2"></rect>
             <path d="M20 11v4"></path>
             <path d="M7 13l2-2 2 4 2-2"></path>
@@ -59,22 +72,22 @@ def render_topbar(active_page: str = "Overview"):
         </div>
         <div>
           <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="font-weight: 700; font-size: 0.95rem; letter-spacing: 0.05em; color: #FFFFFF;">CELLGUARD</span>
-            <span style="font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; color: #22D3EE; background: rgba(34, 211, 238, 0.1); border: 1px solid rgba(34, 211, 238, 0.25); padding: 1px 6px; border-radius: 4px; font-weight: 600;">PROGNOSTIC SUITE</span>
+            <span style="font-weight: 800; font-size: 1.0rem; letter-spacing: 0.04em; color: #FFFFFF;">CELLGUARD</span>
+            <span style="font-size: 0.65rem; font-family: 'JetBrains Mono', monospace; color: #22D3EE; background: rgba(34, 211, 238, 0.12); border: 1px solid rgba(34, 211, 238, 0.3); padding: 2px 7px; border-radius: 4px; font-weight: 700;">LAUNCH v3.0</span>
           </div>
-          <div style="font-size: 0.70rem; color: #94A3B8; font-weight: 400;">BMS Estimation of SOH, Impedance &amp; RUL</div>
+          <div style="font-size: 0.72rem; color: #94A3B8; font-weight: 400;">Smart Battery Health, Range &amp; Lifespan Intelligence</div>
         </div>
       </div>
       
-      <!-- Instant Topbar Navigation Bar (always accessible whether side panel is open or closed) -->
+      <!-- Instant Topbar Navigation Bar -->
       <nav class="cg-top-nav">
         {links_markup}
       </nav>
 
       <div style="display: flex; align-items: center; gap: 10px;">
-        <div style="display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.25); padding: 4px 10px; border-radius: 6px; font-size: 0.70rem; font-family: 'JetBrains Mono', monospace; color: #10B981; font-weight: 600;">
-          <span style="width: 6px; height: 6px; border-radius: 50%; background: #10B981; box-shadow: 0 0 6px #10B981;"></span>
-          ONLINE &bull; NASA B0005/6/7/18
+        <div style="display: flex; align-items: center; gap: 6px; background: rgba(16, 185, 129, 0.08); border: 1px solid rgba(16, 185, 129, 0.3); padding: 5px 12px; border-radius: 20px; font-size: 0.72rem; font-family: 'JetBrains Mono', monospace; color: #10B981; font-weight: 600;">
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: #10B981; box-shadow: 0 0 8px #10B981;"></span>
+          AI SENSORS ONLINE
         </div>
       </div>
     </div>
@@ -83,22 +96,22 @@ def render_topbar(active_page: str = "Overview"):
 
 
 def render_footer(metrics: dict = None):
-    """Clean technical footer."""
-    versions = "scikit-learn 1.6.1 | numpy 2.1.3 | pandas 2.2.3 | scipy 1.16.3"
+    """Clean technical and human footer."""
+    versions = "scikit-learn 1.6.1 | numpy 2.1.3 | pandas 2.2.3"
     if metrics and "environment_versions" in metrics:
         v = metrics["environment_versions"]
-        versions = f"scikit-learn {v.get('scikit_learn', '1.6.1')} | numpy {v.get('numpy', '2.1.3')} | pandas {v.get('pandas', '2.2.3')} | scipy {v.get('scipy', '1.16.3')}"
+        versions = f"scikit-learn {v.get('scikit_learn', '1.6.1')} | numpy {v.get('numpy', '2.1.3')} | pandas {v.get('pandas', '2.2.3')}"
 
     footer_html = f"""
     <div class="cg-footer">
       <div>
-        <span style="font-weight: 600; color: #E2E8F0;">CellGuard BMS Diagnostics</span> &bull; NASA Ames Prognostics Data Repository (Saha &amp; Goebel)
+        <span style="font-weight: 600; color: #E2E8F0;">CellGuard Battery Intelligence</span> &bull; Validated on NASA Ames Prognostics Data Repository
       </div>
       <div>
         <span style="font-family: 'JetBrains Mono', monospace; color: #64748B;">{versions}</span>
       </div>
       <div>
-        Controlled Lab Baseline: 24&deg;C ambient, 2.0 A constant-current discharge
+        Non-destructive 5-minute BMS diagnosis &bull; No full battery discharge required
       </div>
     </div>
     """
@@ -318,3 +331,102 @@ def alert_box(message: str, alert_type: str = "warn", title: str = None):
       <div style="color: #E2E8F0;">{message}</div>
     </div>
     """)
+
+
+def render_human_insight_card(soh: float, capacity_ah: float, rul_val: any, is_eol: bool = False, re_val: float = None):
+    """Render a crystal-clear, jargon-free summary card explaining battery health in everyday terms."""
+    grade, badge_cls, grade_desc, grade_color = get_health_grade(soh)
+    
+    # Range calculation (assuming 320 km baseline for 2.0 Ah pack)
+    est_range_km = int(round((soh / 100.0) * 320.0))
+    loss_pct = round(100.0 - soh, 1)
+    
+    if is_eol or (capacity_ah is not None and capacity_ah <= 1.40):
+        life_text = "<strong>⚠️ Replacement Due:</strong> Battery has reached its retirement limit (30% capacity drop). Range will diminish rapidly."
+        action_text = "Schedule pack service or module replacement. Avoid DC fast-charging to prevent excessive internal heating."
+        card_border = "#EF4444"
+    elif rul_val is not None:
+        months_approx = max(1, int(round(int(rul_val) / 3.5)))
+        life_text = f"<strong>⏳ Approximately {rul_val} full charges left</strong> (~{months_approx} months of regular driving before reaching service threshold)."
+        if soh >= 85:
+            action_text = "Battery is in peak condition! Safe for long trips, highway driving, and rapid fast charging."
+        elif soh >= 75:
+            action_text = "Good working condition. For longest battery life, keep daily charging between 20% and 80%."
+        else:
+            action_text = "Noticeable aging detected. You may experience 15-25% shorter driving range. Limit fast-charging above 80%."
+        card_border = grade_color
+    else:
+        life_text = "Lifespan tracking active."
+        action_text = "Normal daily operation recommended."
+        card_border = "rgba(34, 211, 238, 0.4)"
+
+    re_sub = ""
+    if re_val is not None:
+        re_mohm = re_val * 1000.0
+        if re_mohm < 180:
+            re_sub = "⚡ <strong>Power Flow:</strong> Low internal resistance (fast acceleration, cool operating temperature)."
+        else:
+            re_sub = "⚡ <strong>Power Flow:</strong> Mildly elevated resistance (battery warms up slightly during heavy acceleration)."
+
+    html = f"""
+    <div style="background: rgba(14, 20, 33, 0.85); border: 1px solid rgba(255,255,255,0.08); border-left: 4px solid {card_border}; border-radius: 12px; padding: 18px 22px; margin: 14px 0;">
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <span style="font-size: 1.15rem; font-weight: 800; color: #FFFFFF;">What This Means For You</span>
+          <span class="cg-grade-pill {badge_cls}">&bull; {grade}</span>
+        </div>
+        <span style="font-size: 0.76rem; color: #94A3B8; font-family: 'JetBrains Mono', monospace;">PLAIN ENGLISH DIAGNOSIS</span>
+      </div>
+
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; font-size: 0.85rem; color: #CBD5E1; line-height: 1.55;">
+        <div>
+          <div style="color: #94A3B8; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 3px;">🚗 Usable Driving Range</div>
+          <div>Estimated <strong>{est_range_km} km</strong> (loss of {loss_pct}% compared to new car).</div>
+        </div>
+        <div>
+          <div style="color: #94A3B8; font-size: 0.72rem; text-transform: uppercase; font-weight: 700; letter-spacing: 0.05em; margin-bottom: 3px;">⏳ Estimated Useful Life</div>
+          <div>{life_text}</div>
+        </div>
+      </div>
+
+      <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.06); font-size: 0.82rem; color: #94A3B8; display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+        <span style="color: #22D3EE; font-weight: 700;">💡 SMART AI ADVICE:</span>
+        <span>{action_text}</span>
+      </div>
+    </div>
+    """
+    render_html(html)
+
+
+def render_fleet_comparison_card(cell_id: str, name: str, soh: float, capacity: float, cycles: int, is_held_out: bool = False):
+    """Render a clean, visual card for cell fleet comparison."""
+    grade, badge_cls, grade_desc, grade_color = get_health_grade(soh)
+    held_out_tag = '<span style="font-size: 0.62rem; color: #22D3EE; background: rgba(34,211,238,0.1); border: 1px solid rgba(34,211,238,0.25); padding: 1px 5px; border-radius: 3px;">BENCHMARK</span>' if is_held_out else ""
+
+    html = f"""
+    <div class="cg-fleet-cell">
+      <div style="display: flex; align-items: center; justify-content: space-between;">
+        <div style="display: flex; align-items: center; gap: 6px;">
+          <span style="font-weight: 700; font-size: 0.92rem; color: #FFFFFF;">{cell_id}</span>
+          {held_out_tag}
+        </div>
+        <span class="cg-grade-pill {badge_cls}" style="font-size: 0.68rem; padding: 2px 8px;">{grade}</span>
+      </div>
+      
+      <div>
+        <div style="display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 4px;">
+          <span style="font-size: 0.74rem; color: #94A3B8;">Health Score</span>
+          <span style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; font-weight: 700; color: #FFFFFF;">{soh:.1f}%</span>
+        </div>
+        <div class="cg-progress-bar-bg">
+          <div class="cg-progress-bar-fill" style="width: {min(100.0, max(0.0, soh))}%; background: {grade_color};"></div>
+        </div>
+      </div>
+
+      <div style="display: flex; justify-content: space-between; font-size: 0.72rem; color: #94A3B8; padding-top: 4px; border-top: 1px solid rgba(255,255,255,0.04);">
+        <span>Capacity: <strong style="color: #E2E8F0;">{capacity:.3f} Ah</strong></span>
+        <span>Charges: <strong style="color: #E2E8F0;">{cycles} cyc</strong></span>
+      </div>
+    </div>
+    """
+    render_html(html)

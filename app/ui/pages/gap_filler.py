@@ -19,14 +19,32 @@ from ui.charts import plot_gap_filling_comparison, plot_model_baseline_bar
 
 def render_gap_filler(predictor, feature_table: pd.DataFrame, metrics: dict):
     """Render the Missing-Data Gap Filler page."""
-    st.markdown("### Missing Electrochemical Impedance Gap-Filling (M2)")
-    st.markdown(
-        "<p style='color: var(--text-secondary); margin-bottom: 20px; font-size: 0.92rem;'>"
-        "Electrochemical Impedance Spectroscopy (EIS) is rarely performed onboard due to equipment cost. "
-        "CellGuard recovers missing ohmic (Re) and charge-transfer (Rct) resistances for unmeasured cycles."
-        "</p>",
-        unsafe_allow_html=True,
-    )
+    st.markdown("""
+    <div style="margin-bottom: 16px;">
+      <h2 style="font-size: 1.85rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em; margin: 0 0 4px 0;">
+        🧩 Smart Sensor Gap Filler
+      </h2>
+      <p style="font-size: 0.92rem; color: #94A3B8; margin: 0;">
+        How CellGuard recovers missing battery resistance telemetry when laboratory sensors are unavailable.
+      </p>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Friendly Plain-English Explanation
+    render_html("""
+    <div class="cg-launch-hero" style="padding: 16px 22px; margin-bottom: 18px;">
+      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
+        <span class="cg-launch-badge">💡 REAL-WORLD SENSOR RECOVERY</span>
+        <span style="font-size: 0.82rem; color: #E2E8F0; font-weight: 700;">No Expensive Lab Hardware Required</span>
+      </div>
+      <div style="font-size: 0.85rem; color: #CBD5E1; line-height: 1.55;">
+        In real electric vehicles, measuring internal chemical resistance (EIS) requires expensive laboratory equipment that cannot fit inside a car. 
+        What happens when sensor readings are missing? 
+        CellGuard's AI accurately estimates internal electrolyte flow resistance (<code>Re</code>) and reaction speed (<code>Rct</code>) 
+        across missing cycles, outperforming naive averages especially during long data gaps!
+      </div>
+    </div>
+    """)
 
     # Controls row
     col_c1, col_c2, col_c3 = st.columns([1, 1, 1])

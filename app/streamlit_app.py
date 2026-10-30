@@ -84,14 +84,20 @@ feature_table = load_feature_table()
 def render_sidebar_header():
     with st.sidebar:
         st.markdown("""
-        <div style="display: flex; align-items: center; gap: 10px; padding: 4px 0 16px 0; border-bottom: 1px solid rgba(255,255,255,0.06); margin-bottom: 12px;">
-          <div style="width: 28px; height: 28px; background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.35); border-radius: 6px; display: flex; align-items: center; justify-content: center;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2.5"><rect x="2" y="7" width="16" height="12" rx="2"></rect><path d="M20 11v4"></path></svg>
+        <div style="display: flex; align-items: center; gap: 10px; padding: 4px 0 16px 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 12px;">
+          <div style="width: 32px; height: 32px; background: rgba(34,211,238,0.12); border: 1px solid rgba(34,211,238,0.35); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#22D3EE" stroke-width="2.5"><rect x="2" y="7" width="16" height="12" rx="2"></rect><path d="M20 11v4"></path></svg>
           </div>
           <div>
-            <div style="font-weight: 700; font-size: 0.95rem; color: #FFFFFF; letter-spacing: 0.04em;">CELLGUARD PRO</div>
-            <div style="font-size: 0.68rem; color: #22D3EE; font-family: 'JetBrains Mono', monospace;">BMS DIAGNOSTICS</div>
+            <div style="font-weight: 800; font-size: 0.98rem; color: #FFFFFF; letter-spacing: 0.04em;">CELLGUARD</div>
+            <div style="font-size: 0.68rem; color: #22D3EE; font-family: 'JetBrains Mono', monospace; font-weight: 600;">BATTERY INTELLIGENCE</div>
           </div>
+        </div>
+
+        <div style="background: rgba(14, 20, 33, 0.75); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.74rem;">
+          <div style="color: #94A3B8; margin-bottom: 2px;">DIAGNOSTIC STATUS</div>
+          <div style="color: #10B981; font-weight: 700;">🟢 All Systems Online</div>
+          <div style="color: #64748B; font-size: 0.70rem; margin-top: 2px;">Non-Destructive 5-Min Scan Active</div>
         </div>
         """, unsafe_allow_html=True)
 
@@ -99,7 +105,7 @@ def render_sidebar_header():
 def page_overview_view():
     inject_theme()
     render_sidebar_header()
-    render_topbar("Overview")
+    render_topbar("Launch Dashboard")
     render_overview(predictor, metrics, feature_table)
     render_footer(metrics)
 
@@ -107,7 +113,7 @@ def page_overview_view():
 def page_predict_view():
     inject_theme()
     render_sidebar_header()
-    render_topbar("Predict Cycle")
+    render_topbar("Battery Health Check")
     render_predict(predictor, schema, metrics)
     render_footer(metrics)
 
@@ -115,7 +121,7 @@ def page_predict_view():
 def page_life_rul_view():
     inject_theme()
     render_sidebar_header()
-    render_topbar("Battery Life & RUL")
+    render_topbar("Lifespan & Range Forecast")
     render_life_rul(predictor, feature_table, metrics)
     render_footer(metrics)
 
@@ -123,7 +129,7 @@ def page_life_rul_view():
 def page_gap_filler_view():
     inject_theme()
     render_sidebar_header()
-    render_topbar("Gap Filler")
+    render_topbar("Smart Sensor Gap Filler")
     render_gap_filler(predictor, feature_table, metrics)
     render_footer(metrics)
 
@@ -131,7 +137,7 @@ def page_gap_filler_view():
 def page_performance_view():
     inject_theme()
     render_sidebar_header()
-    render_topbar("Model Performance")
+    render_topbar("Model Accuracy & Verification")
     render_performance(metrics)
     render_footer(metrics)
 
@@ -139,18 +145,18 @@ def page_performance_view():
 def page_ee_bg_view():
     inject_theme()
     render_sidebar_header()
-    render_topbar("EE Background")
+    render_topbar("How Batteries Work")
     render_ee_background()
     render_footer(metrics)
 
 
-# Streamlit 1.30+ Navigation Setup
-page_overview = st.Page(page_overview_view, title="Overview", icon="🏠", default=True)
-page_predict = st.Page(page_predict_view, title="Predict Cycle", icon="⚡")
-page_life_rul = st.Page(page_life_rul_view, title="Battery Life and RUL", icon="📈")
-page_gap_filler = st.Page(page_gap_filler_view, title="Gap Filler", icon="🔬")
-page_performance = st.Page(page_performance_view, title="Model Performance", icon="📊")
-page_ee_bg = st.Page(page_ee_bg_view, title="EE Background", icon="🔌")
+# Streamlit Navigation Setup with human-friendly names & icons
+page_overview = st.Page(page_overview_view, title="Launch Dashboard", icon="🚀", default=True)
+page_predict = st.Page(page_predict_view, title="Battery Health Check", icon="🩺")
+page_life_rul = st.Page(page_life_rul_view, title="Lifespan & Range Forecast", icon="⏳")
+page_gap_filler = st.Page(page_gap_filler_view, title="Smart Sensor Gap Filler", icon="🧩")
+page_performance = st.Page(page_performance_view, title="Model Accuracy & Verification", icon="🎯")
+page_ee_bg = st.Page(page_ee_bg_view, title="How Batteries Work", icon="💡")
 
 pages = [
     page_overview,
@@ -166,9 +172,11 @@ pg = st.navigation(pages)
 # Handle programmatic jump from Overview action buttons if set
 if "nav_selection" in st.session_state:
     target = st.session_state.pop("nav_selection")
-    if target == "Predict Cycle":
+    if target in ["Predict Cycle", "Battery Health Check"]:
         st.switch_page(page_predict)
-    elif target == "Model Performance":
+    elif target in ["Model Performance", "Model Accuracy & Verification"]:
         st.switch_page(page_performance)
+    elif target in ["Battery Life & RUL", "Lifespan & Range Forecast"]:
+        st.switch_page(page_life_rul)
 
 pg.run()

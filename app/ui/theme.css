@@ -473,3 +473,143 @@ section[data-testid="stFileUploadDropzone"]:hover {
   }
 }
 
+/* 5. Launch Dashboard & Human-Friendly UI Styling */
+.cg-launch-hero {
+  background: radial-gradient(circle at 15% 20%, rgba(34, 211, 238, 0.12) 0%, transparent 60%),
+              radial-gradient(circle at 85% 80%, rgba(129, 140, 248, 0.08) 0%, transparent 50%),
+              linear-gradient(180deg, rgba(16, 24, 39, 0.9) 0%, rgba(10, 14, 23, 0.95) 100%);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  border-radius: 16px;
+  padding: 24px 28px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45), 0 0 20px rgba(34, 211, 238, 0.08);
+  margin-bottom: 24px;
+  position: relative;
+  overflow: hidden;
+}
+
+.cg-launch-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(16, 185, 129, 0.12);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.74rem;
+  font-weight: 600;
+  color: #34D399;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.cg-grade-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.cg-grade-a {
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.4);
+  color: #10B981;
+}
+
+.cg-grade-b {
+  background: rgba(245, 158, 11, 0.16);
+  border: 1px solid rgba(245, 158, 11, 0.4);
+  color: #F59E0B;
+}
+
+.cg-grade-c {
+  background: rgba(239, 68, 68, 0.16);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #EF4444;
+}
+
+.cg-scenario-card {
+  background: rgba(16, 22, 35, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  cursor: pointer;
+  height: 100%;
+}
+
+.cg-scenario-card:hover {
+  border-color: rgba(34, 211, 238, 0.5);
+  background: rgba(20, 28, 45, 0.85);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.cg-fleet-cell {
+  background: rgba(16, 22, 35, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  transition: all 0.2s ease;
+}
+
+.cg-fleet-cell:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  transform: translateY(-1px);
+}
+
+.cg-progress-bar-bg {
+  width: 100%;
+  height: 8px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.cg-progress-bar-fill {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.4s ease;
+}
+
+.cg-insight-box {
+  background: rgba(14, 20, 33, 0.7);
+  border: 1px solid rgba(34, 211, 238, 0.2);
+  border-left: 4px solid var(--accent-cyan);
+  border-radius: 10px;
+  padding: 16px 20px;
+  margin: 16px 0;
+}
+
+.cg-step-card {
+  background: rgba(16, 22, 35, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 12px;
+  padding: 18px;
+  position: relative;
+  transition: border-color 0.2s ease;
+}
+
+.cg-step-card:hover {
+  border-color: rgba(34, 211, 238, 0.3);
+}
+
+.cg-step-number {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--accent-cyan);
+  background: rgba(34, 211, 238, 0.1);
+  border: 1px solid rgba(34, 211, 238, 0.25);
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+}
+
