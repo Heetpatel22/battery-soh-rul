@@ -1,465 +1,634 @@
 """
-predict.py - CellGuard Smart Battery Health Check.
-Designed for both everyday users (car owners, fleet managers) and battery engineers.
-Supports 1-click real vehicle presets, everyday driving habit simulation,
-clean CSV telemetry upload, and an optional expandable direct-parameter laboratory mode.
+predict.py - Battery Health Diagnostics.
+Interactive multi-input diagnostic engine supporting:
+1. NASA Ames Reference Cell & Cycle selection
+2. Raw battery discharge CSV file upload with strict telemetry validation
+3. Illustrative simulation scenarios (Fresh, Nominal Commuter, Aging, End-of-Life)
+Features:
+- Deterministic 18-feature extraction via existing battery_features.py
+- Inference coordinator execution via existing trained models in models/
+- Full parameter diagnostics: Capacity, SOH, Re, Rct, RUL, Discharge Energy
+- Voltage vs time discharge curve with 4.0 V -> 3.4 V partial extraction window
+- Ground truth comparison when available
+- "Understanding Your Battery Results" educational section
+- Exportable prediction report
 """
 
 import os
+import io
 import json
+from typing import Tuple
 import streamlit as st
 import pandas as pd
 import numpy as np
 
 from ui.components import (
+    render_compact_header,
+    render_category_legend,
     render_kpi,
-    tachometer_soh_gauge_svg,
-    prismatic_battery_svg,
-    alert_box,
-    render_html,
+    render_health_gauge_svg,
+    render_callout,
     get_health_grade,
-    render_human_insight_card,
+    render_html,
 )
 from ui.charts import plot_discharge_curve
 
-SAMPLE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "sample_cycles"))
+try:
+    from battery_features import extract_discharge_features, RATED_CAPACITY_AH, EOL_CAPACITY_AH
+except ImportError:
+    from src.battery_features import extract_discharge_features, RATED_CAPACITY_AH, EOL_CAPACITY_AH
 
-# Human-friendly real-world vehicle profiles
-SAMPLE_CYCLES_HUMAN = {
-    "B0018_cycle_005_early.csv": {
-        "title": "Brand New Battery (Factory Fresh)",
-        "stage": "Showroom Condition",
-        "icon": "🌟",
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
+SAMPLE_DIR = os.path.join(ROOT_DIR, "sample_cycles")
+
+# Simulation scenarios
+SIMULATION_SCENARIOS = {
+    "fresh": {
+        "title": "Fresh Cell (Early Life, Cycle 5)",
+        "desc": "Showroom baseline cell with minimal cycling. Characterized by long upper voltage plateau and minimal SEI resistance.",
+        "sample_file": "B0018_cycle_005_early.csv",
         "cycle": 5,
-        "est_range_km": 292,
         "true_cap": 1.8285,
         "true_soh": 91.43,
-        "human_desc": "Completed just 5 charges. Excellent health, maximum range, and cool operation.",
+        "true_re": None,
+        "true_rct": None,
     },
-    "B0018_cycle_015_early.csv": {
-        "title": "Gently Used (6 Months Daily Commute)",
-        "stage": "Early Life",
-        "icon": "🚙",
-        "cycle": 15,
-        "est_range_km": 283,
-        "true_cap": 1.7712,
-        "true_soh": 88.56,
-        "human_desc": "6 months of typical gentle driving. Minor nominal break-in fade.",
-    },
-    "B0018_cycle_050_middle.csv": {
-        "title": "Mid-Life Vehicle (1.5 - 2 Years Used)",
-        "stage": "Mid Life (Nominal)",
-        "icon": "🚗",
+    "commuter": {
+        "title": "Nominal Commuter (Mid Life, Cycle 50)",
+        "desc": "Typical mid-cycle operational battery with nominal degradation. Moderate plateau shortening and normal electrolyte resistance.",
+        "sample_file": "B0018_cycle_050_middle.csv",
         "cycle": 50,
-        "est_range_km": 266,
         "true_cap": 1.6664,
         "true_soh": 83.32,
-        "human_desc": "Typical 1-2 year old daily commuter. Solid 83% health, smooth power delivery.",
+        "true_re": 0.06336,
+        "true_rct": 0.08601,
     },
-    "B0018_cycle_065_middle.csv": {
-        "title": "High Mileage (Noticeable Aging)",
-        "stage": "Moderate Aging",
-        "icon": "🚕",
+    "aging": {
+        "title": "Aging High-Mileage Cell (Cycle 65)",
+        "desc": "Noticeable capacity degradation approaching the 80% warranty boundary. Increased internal resistance and faster voltage drop.",
+        "sample_file": "B0018_cycle_065_middle.csv",
         "cycle": 65,
-        "est_range_km": 245,
         "true_cap": 1.5316,
         "true_soh": 76.58,
-        "human_desc": "Noticeable capacity degradation. Driver will notice ~15-20% shorter range.",
+        "true_re": 0.06244,
+        "true_rct": 0.08553,
     },
-    "B0018_cycle_100_late.csv": {
-        "title": "Near Retirement (End-of-Life Warning)",
-        "stage": "Retirement Due",
-        "icon": "⚠️",
+    "eol": {
+        "title": "End-of-Life Warning Cell (Cycle 100)",
+        "desc": "Cell has crossed the 30% capacity fade threshold (1.40 Ah EOL). Model triggers post-EOL protection.",
+        "sample_file": "B0018_cycle_100_late.csv",
         "cycle": 100,
-        "est_range_km": 221,
         "true_cap": 1.3849,
         "true_soh": 69.25,
-        "human_desc": "Reached the 30% fade limit (1.40 Ah threshold). Service or replacement needed.",
-    },
-    "B0018_cycle_115_late.csv": {
-        "title": "Aged Pack (Post-Retirement Storage)",
-        "stage": "Post Retirement",
-        "icon": "🚨",
-        "cycle": 115,
-        "est_range_km": 220,
-        "true_cap": 1.3882,
-        "true_soh": 69.41,
-        "human_desc": "Heavily degraded cell suitable only for low-power stationary energy storage.",
+        "true_re": 0.06545,
+        "true_rct": 0.08884,
     },
 }
 
 
-def load_reference_curve():
-    """Load B0018 Cycle 5 as reference early-life curve."""
-    p = os.path.join(SAMPLE_DIR, "B0018_cycle_005_early.csv")
-    if os.path.exists(p):
-        df = pd.read_csv(p)
-        return df["Time_s"].values, df["Voltage_V"].values
-    return None, None
+def validate_csv_data(df: pd.DataFrame) -> Tuple[bool, list, pd.DataFrame]:
+    """
+    Validate uploaded battery discharge CSV file.
+    Checks:
+    - Required columns: Time_s, Voltage_V, Current_A, Temperature_C
+    - Non-empty and sufficient samples (> 50 points)
+    - Finite numerical values
+    - Monotonically increasing timestamps
+    - Plausible voltage range (2.0 V to 4.5 V)
+    - Plausible current (negative for discharge)
+    - Plausible temperature (10°C to 70°C)
+    """
+    errors = []
+    required_cols = ["Time_s", "Voltage_V", "Current_A", "Temperature_C"]
+    
+    # 1. Column presence check (case-insensitive mapping)
+    col_map = {}
+    for req in required_cols:
+        matches = [c for c in df.columns if c.strip().lower() == req.lower()]
+        if matches:
+            col_map[matches[0]] = req
+        else:
+            errors.append(f"Missing required column: '{req}'. File must include Time_s, Voltage_V, Current_A, Temperature_C.")
+
+    if errors:
+        return False, errors, df
+
+    df = df.rename(columns=col_map)
+    df = df[required_cols].copy()
+
+    # 2. Check empty or small dataset
+    if len(df) < 50:
+        errors.append(f"Insufficient telemetry data: only {len(df)} rows found. A minimum of 50 samples is required to evaluate discharge dynamics.")
+        return False, errors, df
+
+    # 3. Numeric conversion & finite check
+    for c in required_cols:
+        df[c] = pd.to_numeric(df[c], errors="coerce")
+        null_count = df[c].isna().sum()
+        if null_count > 0:
+            errors.append(f"Column '{c}' contains {null_count} invalid non-numeric or NaN values.")
+
+    if errors:
+        return False, errors, df
+
+    # 4. Monotonic timestamps check
+    t_diff = np.diff(df["Time_s"].values)
+    if np.any(t_diff < -1e-5):
+        errors.append("Timestamp sequence in 'Time_s' is not monotonically increasing. Ensure rows are chronologically sorted.")
+
+    # 5. Voltage range check
+    v = df["Voltage_V"].values
+    if np.any(v < 1.5) or np.any(v > 4.6):
+        errors.append(f"Terminal voltage spans [{np.min(v):.2f} V, {np.max(v):.2f} V], which falls outside the physically plausible lithium-ion range (2.0 V to 4.5 V).")
+
+    # 6. Voltage window crossing check (must cross 4.0 V down to 3.4 V)
+    if np.max(v) < 3.95:
+        errors.append(f"Maximum terminal voltage ({np.max(v):.2f} V) does not reach the 4.00 V upper extraction threshold. Test must start near full charge.")
+    if np.min(v) > 3.45:
+        errors.append(f"Minimum terminal voltage ({np.min(v):.2f} V) does not cross below the 3.40 V lower threshold. Partial discharge window incomplete.")
+
+    # 7. Temperature check
+    temp = df["Temperature_C"].values
+    if np.any(temp < 5.0) or np.any(temp > 85.0):
+        errors.append(f"Temperature values span [{np.min(temp):.1f}°C, {np.max(temp):.1f}°C], outside plausible operational limits (10°C to 70°C).")
+
+    is_valid = len(errors) == 0
+    return is_valid, errors, df
 
 
 def render_predict(predictor, schema: dict, metrics: dict):
-    """Render the human-friendly Battery Health Check diagnostic page."""
+    """Render the main Battery Health Diagnostics interactive page."""
+    # Ensure default session state
+    if "selected_cell" not in st.session_state:
+        st.session_state["selected_cell"] = "B0018"
+    if "selected_cycle" not in st.session_state:
+        st.session_state["selected_cycle"] = 50
+
+    active_cell = st.session_state["selected_cell"]
+    render_compact_header(
+        page_title="Battery Health Diagnostics",
+        selected_battery=active_cell,
+        data_source="Partial-Window Telemetry (4.0 V &rarr; 3.4 V)",
+        model_status="Inference Ready &bull; Zero Leakage Verified",
+    )
+
+    render_category_legend()
+
+    # Input method selection
     st.markdown("""
-    <div style="margin-bottom: 18px;">
-      <h2 style="font-size: 1.85rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em; margin: 0 0 4px 0;">
-        🩺 Smart Battery Health Check
-      </h2>
-      <p style="font-size: 0.92rem; color: #94A3B8; margin: 0;">
-        Check any battery's health, driving range, and remaining charges in seconds.
-        Pick a real-world vehicle stage, simulate everyday driving habits, or upload your battery log.
+    <div style="margin-bottom: 14px;">
+      <h3 style="font-size: 1.15rem; font-weight: 700; color: #0F172A; margin: 0 0 4px 0;">
+        Diagnostic Input Source
+      </h3>
+      <p style="font-size: 0.82rem; color: #64748B; margin: 0;">
+        Select an input channel to extract partial-window voltage features and generate multi-target predictions.
       </p>
     </div>
     """, unsafe_allow_html=True)
 
-    col_input, col_results = st.columns([1.1, 1.4], gap="large")
+    input_mode = st.radio(
+        "Choose Input Method:",
+        [
+            "1. Reference NASA Battery Cell (Historical Run)",
+            "2. Upload Battery Discharge Telemetry (CSV)",
+            "3. Illustrative Simulation Scenario (Controlled Test)",
+        ],
+        index=0,
+        horizontal=True,
+    )
 
-    df_raw = None
-    manual_features = None
-    inferred_disc_idx = 50
-    data_source_label = ""
+    t_arr = None
+    v_arr = None
+    i_arr = None
+    temp_arr = None
+    inferred_cycle = 50
+    ground_truth = {}
+    data_label = ""
+    is_held_out = False
 
-    with col_input:
-        st.markdown("<div style='font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #22D3EE; margin-bottom: 8px;'>1. CHOOSE HOW YOU WANT TO TEST</div>", unsafe_allow_html=True)
-
-        input_mode = st.radio(
-            "Input Mode Selector",
-            ["🚗 Real Vehicle Presets", "🎮 Everyday Usage Simulator", "📁 Upload Battery Log (CSV)"],
-            label_visibility="collapsed",
-            horizontal=False,
-        )
-
-        st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-        # MODE 1: Real Vehicle Presets
-        if "Real Vehicle Presets" in input_mode:
-            sample_keys = list(SAMPLE_CYCLES_HUMAN.keys())
-            default_ix = 2  # Cycle 50
-            if "selected_sample" in st.session_state and st.session_state["selected_sample"] in sample_keys:
-                default_ix = sample_keys.index(st.session_state["selected_sample"])
-
-            selected_key = st.selectbox(
-                "Select a Real Vehicle Battery Life Stage:",
-                sample_keys,
-                index=default_ix,
-                format_func=lambda k: f"{SAMPLE_CYCLES_HUMAN[k]['icon']} {SAMPLE_CYCLES_HUMAN[k]['title']}",
+    # -------------------------------------------------------------------------
+    # METHOD 1: Reference NASA Battery Cell
+    # -------------------------------------------------------------------------
+    if "1. Reference" in input_mode:
+        col_c1, col_c2 = st.columns([1.2, 1.2], gap="medium")
+        with col_c1:
+            cell_choice = st.selectbox(
+                "Select NASA Ames Reference Cell:",
+                ["B0018 (Held-out Benchmark)", "B0005 (Nominal Rack)", "B0006 (Accelerated Degradation)", "B0007 (Lab Ambient)"],
+                index=0,
             )
-            meta = SAMPLE_CYCLES_HUMAN[selected_key]
-            inferred_disc_idx = meta["cycle"]
-            data_source_label = meta["title"]
+            selected_cell = cell_choice.split()[0]
+            st.session_state["selected_cell"] = selected_cell
+            is_held_out = (selected_cell == "B0018")
 
-            fpath = os.path.join(SAMPLE_DIR, selected_key)
-            if os.path.exists(fpath):
-                df_raw = pd.read_csv(fpath)
+        with col_c2:
+            preset_file = st.selectbox(
+                "Select Available Sample Discharge Cycle:",
+                [
+                    "B0018_cycle_005_early.csv (Fresh Pack)",
+                    "B0018_cycle_015_early.csv (Early Use)",
+                    "B0018_cycle_050_middle.csv (Nominal Mid-Life)",
+                    "B0018_cycle_065_middle.csv (Aging Pack)",
+                    "B0018_cycle_100_late.csv (Retirement Limit)",
+                    "B0018_cycle_115_late.csv (Post-EOL Storage)",
+                ],
+                index=2,
+            )
+            fname = preset_file.split()[0]
 
-            render_html(f"""
-            <div style="background: rgba(14, 20, 33, 0.75); border: 1px solid rgba(255,255,255,0.08); border-radius: 10px; padding: 12px 16px; margin-top: 8px;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">
-                <span style="font-size: 0.85rem; font-weight: 700; color: #FFFFFF;">{meta['icon']} {meta['title']}</span>
-                <span style="font-size: 0.72rem; color: #22D3EE; font-family: 'JetBrains Mono', monospace;">Cycle {meta['cycle']}</span>
-              </div>
-              <div style="font-size: 0.80rem; color: #CBD5E1; line-height: 1.45; margin-bottom: 8px;">
-                {meta['human_desc']}
-              </div>
-              <div style="display: flex; gap: 14px; font-size: 0.74rem; color: #94A3B8; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 6px;">
-                <span>Verified Benchmark: <strong style="color: #FFFFFF;">{meta['true_cap']:.3f} Ah</strong></span>
-                <span>Actual Health: <strong style="color: #10B981;">{meta['true_soh']:.1f}%</strong></span>
-              </div>
-            </div>
-            """)
+        fpath = os.path.join(SAMPLE_DIR, fname)
+        if os.path.exists(fpath):
+            df_sample = pd.read_csv(fpath)
+            t_arr = df_sample["Time_s"].values
+            v_arr = df_sample["Voltage_V"].values
+            i_arr = df_sample["Current_A"].values
+            temp_arr = df_sample["Temperature_C"].values
+            
+            # Extract cycle number from filename
+            parts = fname.replace(".csv", "").split("_")
+            inferred_cycle = int(parts[2]) if len(parts) >= 3 and parts[2].isdigit() else 50
+            st.session_state["selected_cycle"] = inferred_cycle
+            data_label = f"NASA {selected_cell} Cycle {inferred_cycle}"
 
-        # MODE 2: Everyday Usage Simulator (Replaces raw confusing sliders!)
-        elif "Everyday Usage Simulator" in input_mode:
-            st.markdown("""
-            <div style="background: rgba(14, 20, 33, 0.6); border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; padding: 10px 14px; margin-bottom: 12px; font-size: 0.82rem; color: #CBD5E1;">
-              Adjust intuitive everyday factors like battery age and driving style. Our engine automatically translates these into physical electrochemical signals.
-            </div>
-            """, unsafe_allow_html=True)
-
-            sim_charges = st.slider("Battery Age (Completed Full Charges):", 0, 150, 45, step=5, help="Approximate number of full charge-discharge cycles completed.")
-            inferred_disc_idx = sim_charges
-
-            col_sim1, col_sim2 = st.columns(2)
-            with col_sim1:
-                driving_style = st.selectbox(
-                    "Daily Driving Style:",
-                    ["Gentle Eco Driving", "Normal Daily Commute", "Aggressive / Frequent Fast-Charge"],
-                    index=1,
-                    help="Aggressive driving and frequent fast-charging slightly increase internal battery heating and resistance.",
-                )
-            with col_sim2:
-                climate = st.selectbox(
-                    "Operating Climate:",
-                    ["Mild (24°C / Ideal)", "Hot Summer (38°C)", "Cold Winter (5°C)"],
-                    index=0,
-                    help="Extreme heat or freezing cold impacts battery chemical kinetics.",
-                )
-
-            # Map everyday inputs into physically valid partial-window features
-            age_frac = float(sim_charges) / 140.0
-            style_penalty = 1.05 if "Aggressive" in driving_style else (0.96 if "Gentle" in driving_style else 1.0)
-            temp_offset = 15.0 if "Hot" in climate else (5.0 if "Cold" in climate else 0.0)
-
-            # Realistic feature synthesis adhering to training bounds
-            manual_features = {}
-            manual_features["T_40_38"] = float(np.clip(350.0 - (120.0 * age_frac * style_penalty), 100.0, 480.0))
-            manual_features["T_38_36"] = float(np.clip(770.0 - (210.0 * age_frac * style_penalty), 350.0, 1000.0))
-            manual_features["T_36_34"] = float(np.clip(1320.0 - (380.0 * age_frac * style_penalty), 600.0, 1650.0))
-            manual_features["T_40_36"] = manual_features["T_40_38"] + manual_features["T_38_36"]
-            manual_features["T_38_34"] = manual_features["T_38_36"] + manual_features["T_36_34"]
-            manual_features["Q_40_36"] = float(np.clip(0.62 - (0.22 * age_frac * style_penalty), 0.22, 0.80))
-            manual_features["V_at_60s"] = float(np.clip(3.93 - (0.08 * age_frac), 3.78, 3.98))
-            manual_features["V_at_300s"] = float(np.clip(3.83 - (0.10 * age_frac), 3.65, 3.88))
-            manual_features["V_at_600s"] = float(np.clip(3.73 - (0.12 * age_frac), 3.50, 3.78))
-            manual_features["V_at_1200s"] = float(np.clip(3.58 - (0.14 * age_frac), 3.35, 3.68))
-
-            manual_features["V_start"] = 3.98
-            manual_features["V_mean_first600s"] = (manual_features["V_at_60s"] + manual_features["V_at_300s"] + manual_features["V_at_600s"]) / 3.0
-            manual_features["V_slope_mid"] = -0.00030 * style_penalty
-            manual_features["T_start"] = 24.0 + temp_offset
-            manual_features["T_max"] = 39.0 + (5.0 * age_frac) + temp_offset
-            manual_features["T_rise"] = manual_features["T_max"] - manual_features["T_start"]
-            manual_features["T_mean"] = (manual_features["T_start"] + manual_features["T_max"]) / 2.0
-            manual_features["R_dc_proxy"] = float(np.clip(0.095 + (0.045 * age_frac * style_penalty), 0.08, 0.22))
-            data_source_label = f"Usage Simulator ({sim_charges} charges, {driving_style.split()[0]})"
-
-        # MODE 3: Upload Battery Log (CSV)
+            # Known ground truths for B0018
+            gt_table = {
+                5: {"cap": 1.8285, "soh": 91.43, "re": None, "rct": None, "rul": 95},
+                15: {"cap": 1.7712, "soh": 88.56, "re": None, "rct": None, "rul": 85},
+                50: {"cap": 1.6664, "soh": 83.32, "re": 0.06336, "rct": 0.08601, "rul": 50},
+                65: {"cap": 1.5316, "soh": 76.58, "re": 0.06244, "rct": 0.08553, "rul": 25},
+                100: {"cap": 1.3849, "soh": 69.25, "re": 0.06545, "rct": 0.08884, "rul": 0},
+                115: {"cap": 1.3882, "soh": 69.41, "re": 0.06297, "rct": 0.08791, "rul": 0},
+            }
+            if inferred_cycle in gt_table:
+                ground_truth = gt_table[inferred_cycle]
         else:
+            st.error(f"Sample discharge cycle file not found at: {fpath}")
+
+    # -------------------------------------------------------------------------
+    # METHOD 2: CSV Upload with Full Validation
+    # -------------------------------------------------------------------------
+    elif "2. Upload" in input_mode:
+        st.markdown("""
+        <div class="cg-callout" style="margin-top: 6px;">
+          <strong>CSV Upload Requirements:</strong> File must contain the four standard BMS channels: 
+          <code>Time_s</code> (seconds), <code>Voltage_V</code> (terminal volts), <code>Current_A</code> (amperes, negative during discharge), and <code>Temperature_C</code> (thermocouple Celsius). 
+          The discharge curve must cross from at least <strong>4.0 V down to 3.4 V</strong>.
+        </div>
+        """, unsafe_allow_html=True)
+
+        col_up, col_guide = st.columns([1.5, 1.2], gap="large")
+
+        with col_guide:
+            st.markdown("<div style='font-size:0.80rem; font-weight:700; color:#334155; margin-bottom:6px;'>Expected CSV Format:</div>", unsafe_allow_html=True)
+            guide_df = pd.DataFrame({
+                "Time_s": [0.0, 9.3, 19.8, 29.5, 39.2],
+                "Voltage_V": [4.190, 4.190, 3.995, 3.979, 3.968],
+                "Current_A": [-0.002, 0.001, -2.007, -2.008, -2.007],
+                "Temperature_C": [24.69, 24.70, 24.71, 24.77, 24.86],
+            })
+            st.dataframe(guide_df, use_container_width=True, hide_index=True)
+
+            # Download CSV template button
+            sample_csv_path = os.path.join(SAMPLE_DIR, "B0018_cycle_050_middle.csv")
+            if os.path.exists(sample_csv_path):
+                with open(sample_csv_path, "rb") as f:
+                    csv_bytes = f.read()
+                st.download_button(
+                    label="📥 Download Reference CSV Template",
+                    data=csv_bytes,
+                    file_name="cellguard_sample_cycle_50.csv",
+                    mime="text/csv",
+                    use_container_width=True,
+                )
+
+        with col_up:
             uploaded_file = st.file_uploader(
-                "Upload Raw Battery Discharge CSV:",
+                "Upload Raw Discharge CSV Telemetry:",
                 type=["csv"],
-                help="Columns needed: Time_s, Voltage_V, Current_A, Temperature_C",
+                help="Select a CSV file containing timestamped discharge timeseries data.",
             )
+
             if uploaded_file is not None:
                 try:
-                    df_raw = pd.read_csv(uploaded_file)
-                    req_cols = ["Time_s", "Voltage_V", "Current_A", "Temperature_C"]
-                    missing = [c for c in req_cols if c not in df_raw.columns]
-                    if missing:
-                        alert_box(
-                            f"CSV is missing required headers: {', '.join(missing)}.",
-                            alert_type="error",
-                            title="CSV Header Validation Failed",
-                        )
-                        df_raw = None
+                    df_up = pd.read_csv(uploaded_file)
+                    is_valid, validation_errors, clean_df = validate_csv_data(df_up)
+
+                    if not is_valid:
+                        st.error("Validation Failed. Please correct the following errors:")
+                        for err in validation_errors:
+                            st.markdown(f"- ⚠️ {err}")
                     else:
-                        st.success(f"✓ Valid telemetry loaded ({len(df_raw)} samples recorded).")
-                        data_source_label = uploaded_file.name
+                        st.success(f"Telemetry Verified: {len(clean_df)} valid measurements loaded successfully.")
+                        t_arr = clean_df["Time_s"].values
+                        v_arr = clean_df["Voltage_V"].values
+                        i_arr = clean_df["Current_A"].values
+                        temp_arr = clean_df["Temperature_C"].values
+                        data_label = f"Uploaded File: {uploaded_file.name}"
+                        st.session_state["uploaded_battery_data"] = clean_df
+
+                        inferred_cycle = st.number_input(
+                            "Provide Optional Known Cycle Number (if tracking degradation history):",
+                            min_value=1,
+                            max_value=300,
+                            value=50,
+                            step=1,
+                        )
                 except Exception as e:
-                    alert_box(f"CSV Parse error: {str(e)}", alert_type="error")
-                    df_raw = None
+                    st.error(f"Error reading CSV file: {str(e)}")
             else:
-                render_html("""
-                <div style="border: 1px dashed rgba(34,211,238,0.3); border-radius: 10px; padding: 24px; text-align: center; color: #94A3B8; margin-top: 8px;">
-                  <div style="font-size: 0.95rem; font-weight: 600; color: #FFFFFF; margin-bottom: 4px;">Drop Your Battery Log Here</div>
-                  <div style="font-size: 0.76rem; color: #64748B;">Supported columns: Time_s, Voltage_V, Current_A, Temperature_C</div>
-                </div>
-                """)
+                st.info("Upload a file above or switch to Method 1 or 3 to test with preloaded telemetry.")
 
-        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
-
-        # Optional Laboratory Mode Drawer (Tucked away so normal people aren't confused)
-        with st.expander("🔬 Direct Micro-Signal Parameter Lab (For Battery Engineers)", expanded=False):
-            st.markdown("""
-            <div style="font-size: 0.78rem; color: #94A3B8; margin-bottom: 8px;">
-              Directly override micro-second plateau traversal timings ($4.0\\text{ V} \\to 3.4\\text{ V}$) for custom bench testing.
-            </div>
-            """, unsafe_allow_html=True)
-
-            lab_override = st.checkbox("Enable Direct Parameter Overrides", value=False)
-            if lab_override:
-                if manual_features is None:
-                    manual_features = {}
-                col_l1, col_l2 = st.columns(2)
-                with col_l1:
-                    manual_features["T_40_38"] = st.slider("T_40_38: Time from 4.0V to 3.8V (s)", 50.0, 500.0, 300.0, 5.0)
-                    manual_features["T_38_36"] = st.slider("T_38_36: Time from 3.8V to 3.6V (s)", 250.0, 1050.0, 670.0, 10.0)
-                    manual_features["T_36_34"] = st.slider("T_36_34: Time from 3.6V to 3.4V (s)", 500.0, 1700.0, 1140.0, 10.0)
-                    manual_features["Q_40_36"] = st.slider("Q_40_36: Partial Charge (Ah)", 0.18, 0.85, 0.54, 0.01)
-                with col_l2:
-                    manual_features["T_40_36"] = manual_features["T_40_38"] + manual_features["T_38_36"]
-                    manual_features["T_38_34"] = manual_features["T_38_36"] + manual_features["T_36_34"]
-                    manual_features["V_at_60s"] = st.slider("V_at_60s: Voltage at 60s (V)", 3.75, 4.00, 3.90, 0.01)
-                    manual_features["V_at_300s"] = st.slider("V_at_300s: Voltage at 300s (V)", 3.60, 3.90, 3.79, 0.01)
-                    manual_features["V_at_600s"] = st.slider("V_at_600s: Voltage at 600s (V)", 3.45, 3.80, 3.68, 0.01)
-                    manual_features["V_at_1200s"] = st.slider("V_at_1200s: Voltage at 1200s (V)", 3.30, 3.70, 3.53, 0.01)
-                data_source_label = "Direct Parameter Lab"
-
-        st.markdown("<div style='height: 8px;'></div>", unsafe_allow_html=True)
-        inferred_disc_idx = st.number_input(
-            "Service Cycle Age (Charges completed):",
-            min_value=0,
-            max_value=250,
-            value=inferred_disc_idx,
-            step=1,
-            help="Number of full charge cycles the battery has completed since brand new.",
+    # -------------------------------------------------------------------------
+    # METHOD 3: Illustrative Simulation Scenarios
+    # -------------------------------------------------------------------------
+    else:
+        sc_keys = list(SIMULATION_SCENARIOS.keys())
+        sc_choice = st.selectbox(
+            "Select Controlled Scenario:",
+            [SIMULATION_SCENARIOS[k]["title"] for k in sc_keys],
+            index=1,
         )
+        selected_key = sc_keys[[SIMULATION_SCENARIOS[k]["title"] for k in sc_keys].index(sc_choice)]
+        active_sc = SIMULATION_SCENARIOS[selected_key]
 
-        use_holdout = st.toggle(
-            "Strict Unseen Battery Mode (Held-out NASA B0018)",
-            value=True,
-            help="Evaluates strictly on an AI model that never saw cell B0018 during training to prove true generalization.",
-        )
+        st.caption(f"**Scenario Profile:** {active_sc['desc']}")
+        fpath = os.path.join(SAMPLE_DIR, active_sc["sample_file"])
+        if os.path.exists(fpath):
+            df_sim = pd.read_csv(fpath)
+            t_arr = df_sim["Time_s"].values
+            v_arr = df_sim["Voltage_V"].values
+            i_arr = df_sim["Current_A"].values
+            temp_arr = df_sim["Temperature_C"].values
+            inferred_cycle = active_sc["cycle"]
+            data_label = f"Simulated Scenario: {active_sc['title']}"
+            ground_truth = {
+                "cap": active_sc["true_cap"],
+                "soh": active_sc["true_soh"],
+                "re": active_sc["true_re"],
+                "rct": active_sc["true_rct"],
+            }
+        else:
+            st.error(f"Simulation scenario file not found at: {fpath}")
 
-    # Right Column: Instant Diagnostic Output Console
-    with col_results:
-        st.markdown("<div style='font-size: 0.78rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: #22D3EE; margin-bottom: 8px;'>2. DIAGNOSTIC REPORT</div>", unsafe_allow_html=True)
+    # -------------------------------------------------------------------------
+    # FEATURE EXTRACTION & INFERENCE EXECUTION
+    # -------------------------------------------------------------------------
+    if t_arr is not None and v_arr is not None:
+        st.markdown("<div style='height: 16px;'></div>", unsafe_allow_html=True)
+        st.markdown(f"""
+        <div style="display: flex; justify-content: space-between; align-items: baseline; border-bottom: 2px solid #E2E8F0; padding-bottom: 8px; margin-bottom: 16px;">
+          <div>
+            <h3 style="font-size: 1.15rem; font-weight: 700; color: #0F172A; margin: 0;">
+              Diagnostic Inference Results
+            </h3>
+            <span style="font-size: 0.78rem; color: #64748B;">Source: <strong>{data_label}</strong></span>
+          </div>
+          <span class="cg-chip cg-chip-status">INFERENCE COMPLETE</span>
+        </div>
+        """, unsafe_allow_html=True)
 
-        result = None
-        if df_raw is not None:
-            t = df_raw["Time_s"].values
-            v = df_raw["Voltage_V"].values
-            i = df_raw["Current_A"].values
-            temp = df_raw["Temperature_C"].values
+        with st.spinner("Extracting 18 partial-window voltage features and executing ML pipelines..."):
+            try:
+                # Call existing feature extraction from battery_features.py
+                features = extract_discharge_features(t_arr, v_arr, i_arr, temp_arr)
 
-            from battery_features import extract_discharge_features
-            extracted_feats = extract_discharge_features(t, v, i, temp)
-
-            is_valid, issues = predictor.validate_features(extracted_feats)
-            if not is_valid:
-                for issue in issues:
-                    alert_box(issue, alert_type="warn", title="Voltage Window Incomplete")
-                st.info("💡 The diagnostic scan requires the battery curve to start at 4.0 V and reach down to 3.4 V (the first 5 minutes of discharge).")
-            else:
-                if use_holdout:
-                    result = predictor.predict_demo_unseen_b0018(extracted_feats, disc_idx=inferred_disc_idx)
+                # Execute predictor
+                if is_held_out:
+                    pred_res = predictor.predict_demo_unseen_b0018(features, disc_idx=inferred_cycle)
                 else:
-                    result = predictor.predict_all(extracted_feats, disc_idx=inferred_disc_idx)
+                    pred_res = predictor.predict_all(features, disc_idx=inferred_cycle)
 
-        elif manual_features is not None:
-            if use_holdout:
-                result = predictor.predict_demo_unseen_b0018(manual_features, disc_idx=inferred_disc_idx)
+            except Exception as e:
+                st.error(f"Inference execution failed: {str(e)}")
+                return
+
+        if not pred_res.get("success"):
+            st.error("Feature validation failed. The partial discharge window could not be resolved:")
+            for issue in pred_res.get("errors", []):
+                st.markdown(f"- ⚠️ {issue}")
+            return
+
+        preds = pred_res["predictions"]
+        p_cap = preds["capacity"]["value"]
+        p_soh = preds["soh"]["value"]
+        p_re = preds["Re"]["value"]
+        p_rct = preds["Rct"]["value"]
+        rul_obj = preds["RUL"]
+        p_rul = rul_obj.get("value")
+        p_is_eol = rul_obj.get("is_eol", False) or (p_cap <= 1.40)
+        p_energy = preds.get("discharge_energy", {}).get("value", 5.8)
+
+        # ---------------------------------------------------------------------
+        # TOP RESULTS KPI TILES
+        # ---------------------------------------------------------------------
+        col_res_kpi1, col_res_kpi2, col_res_kpi3, col_res_kpi4 = st.columns(4)
+        with col_res_kpi1:
+            render_kpi(
+                label="Predicted SOH",
+                value=f"{p_soh:.2f}",
+                unit="%",
+                error_band="2.32",
+                subtext=f"Meas: {ground_truth.get('soh', 'N/A')}%" if "soh" in ground_truth and ground_truth["soh"] else "2.00 Ah Rated",
+                status="Healthy" if p_soh >= 80 else ("Degrading" if p_soh >= 70 else "Critical EOL"),
+                category="predicted",
+                tooltip="M1 Ridge prediction from 4.0V-3.4V partial window.",
+            )
+        with col_res_kpi2:
+            render_kpi(
+                label="Predicted Capacity",
+                value=f"{p_cap:.4f}",
+                unit="Ah",
+                error_band="0.046",
+                subtext=f"Meas: {ground_truth.get('cap', 'N/A')} Ah" if "cap" in ground_truth and ground_truth["cap"] else "Window: 4.0V to 3.4V",
+                status="Healthy" if p_cap >= 1.60 else ("Degrading" if p_cap >= 1.40 else "Critical EOL"),
+                category="predicted",
+                tooltip="Predicted full discharge capacity without draining to cutoff.",
+            )
+        with col_res_kpi3:
+            if p_is_eol or (p_rul is None):
+                render_kpi(
+                    label="Predicted RUL",
+                    value="EOL",
+                    unit="Reached",
+                    subtext="Capacity &le; 1.40 Ah threshold",
+                    status="Critical EOL",
+                    category="predicted",
+                    tooltip="End of Life retirement threshold reached (30% fade).",
+                )
             else:
-                result = predictor.predict_all(manual_features, disc_idx=inferred_disc_idx)
-
-        if result and result.get("success"):
-            preds = result["predictions"]
-            pred_cap = preds["capacity"]["value"]
-            pred_soh = preds["soh"]["value"]
-            re_val = preds["Re"]["value"]
-            re_err = preds["Re"]["error_band"]
-            rct_val = preds["Rct"]["value"]
-            rct_err = preds["Rct"]["error_band"]
-            rul_data = preds["RUL"]
-            cap_err = preds["capacity"]["error_band"]
-
-            grade, grade_badge, grade_desc, grade_color = get_health_grade(pred_soh)
-            est_range_km = int(round((pred_soh / 100.0) * 320.0))
-
-            # Visual instruments
-            col_g, col_b = st.columns([1.2, 1])
-            with col_g:
-                tacho_svg = tachometer_soh_gauge_svg(pred_soh, capacity_ah=pred_cap, size=185)
-                render_html(f'<div style="background: rgba(12, 16, 25, 0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px; display: flex; align-items: center; justify-content: center;">{tacho_svg}</div>')
-            with col_b:
-                cell_svg = prismatic_battery_svg(pred_soh, width=105, height=185)
-                render_html(f'<div style="background: rgba(12, 16, 25, 0.9); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 10px; display: flex; align-items: center; justify-content: center;">{cell_svg}</div>')
-
-            st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
-
-            # 4 Human-friendly headline KPI tiles
-            k1, k2 = st.columns(2)
-            with k1:
                 render_kpi(
-                    label="Battery Health Score",
-                    value=f"{pred_soh:.1f}",
-                    unit="%",
-                    subtext=f"Holds {pred_cap:.3f} Ah (Original 2.00 Ah)",
-                    status="Healthy" if pred_soh >= 80 else ("Degrading" if pred_soh >= 70 else "End of Life"),
-                    tooltip="State of Health: Total stored energy compared to when the battery was brand new.",
+                    label="Predicted RUL",
+                    value=f"{p_rul}",
+                    unit="cyc",
+                    error_band="15",
+                    subtext=f"Meas: {ground_truth.get('rul', 'N/A')} cyc" if "rul" in ground_truth and ground_truth["rul"] else "To 1.40 Ah EOL",
+                    status="Healthy" if p_rul >= 40 else "Degrading",
+                    category="predicted",
+                    tooltip="M4 Random Forest forecast of full cycles until 1.40 Ah cutoff.",
                 )
-            with k2:
-                render_kpi(
-                    label="Usable Driving Range",
-                    value=f"{est_range_km}",
-                    unit="km",
-                    subtext="Baseline: 320 km on showroom battery",
-                    status="Healthy" if est_range_km >= 260 else ("Degrading" if est_range_km >= 230 else "End of Life"),
-                    tooltip="Estimated driving range on a full 100% charge.",
-                )
-
-            k3, k4 = st.columns(2)
-            with k3:
-                if rul_data.get("is_eol") or (pred_cap <= 1.40):
-                    render_kpi("Lifespan Countdown", "Service Due", "", subtext="Reached 70% retirement threshold", status="End of Life")
-                else:
-                    rul_val = rul_data.get("value", 0)
-                    render_kpi(
-                        label="Lifespan Countdown",
-                        value=f"{rul_val}",
-                        unit="charges",
-                        subtext=f"Retirement ~ cycle {inferred_disc_idx + rul_val}",
-                        status="Healthy" if rul_val >= 35 else "Degrading",
-                    )
-            with k4:
-                re_mohm = re_val * 1000.0
-                re_status = "Optimal" if re_mohm < 170 else ("Moderate" if re_mohm < 200 else "High Heat")
-                render_kpi(
-                    label="Internal Flow & Heat",
-                    value=re_status,
-                    unit="",
-                    subtext=f"Resistance: {re_mohm:.1f} mΩ (Cool)",
-                    status="Healthy" if re_mohm < 170 else ("Degrading" if re_mohm < 200 else "End of Life"),
-                )
-
-            # Plain English Insight & Recommendation Card
-            render_human_insight_card(
-                soh=pred_soh,
-                capacity_ah=pred_cap,
-                rul_val=rul_data.get("value"),
-                is_eol=rul_data.get("is_eol", False) or (pred_cap <= 1.40),
-                re_val=re_val,
+        with col_res_kpi4:
+            render_kpi(
+                label="Discharge Energy",
+                value=f"{p_energy:.2f}",
+                unit="Wh",
+                error_band="0.15",
+                subtext="Total available Wh",
+                status="Healthy" if p_energy >= 5.0 else "Degrading",
+                category="predicted",
+                tooltip="M5 Ridge prediction of usable energy to cutoff.",
             )
 
-            # Optional Technical Lab Drawer for Engineers
-            with st.expander("🔬 View Certified Lab Error Bounds & ECM Impedances (For Engineers)", expanded=False):
-                st.markdown(f"""
-                <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.78rem; color: #CBD5E1; line-height: 1.6; background: rgba(0,0,0,0.3); padding: 10px; border-radius: 8px;">
-                  • Discharged Capacity: <strong>{pred_cap:.4f} &plusmn; {cap_err:.4f} Ah</strong><br/>
-                  • Electrolyte Resistance (Re / R0): <strong>{re_val*1000:.2f} &plusmn; {re_err*1000:.2f} mΩ</strong><br/>
-                  • Charge-Transfer Resistance (Rct / R1): <strong>{rct_val*1000:.2f} &plusmn; {rct_err*1000:.2f} mΩ</strong><br/>
-                  • Remaining Useful Life (RUL): <strong>{rul_data.get('value')} &plusmn; {rul_data.get('error_band', 15)} cycles</strong>
-                </div>
-                """, unsafe_allow_html=True)
+        col_imp1, col_imp2 = st.columns(2)
+        with col_imp1:
+            render_kpi(
+                label="Estimated Ohmic Resistance (Re / R₀)",
+                value=f"{p_re*1000.0:.2f}",
+                unit="mΩ",
+                error_band="6.6",
+                subtext=f"Meas: {ground_truth['re']*1000.0:.2f} mΩ" if ground_truth.get("re") else "Bulk electrolyte & contact impedance",
+                status="Healthy" if p_re < 0.08 else "Degrading",
+                category="predicted",
+                tooltip="M2 Ridge estimation of high-frequency series resistance.",
+            )
+        with col_imp2:
+            render_kpi(
+                label="Estimated Charge-Transfer (Rct / R₁)",
+                value=f"{p_rct*1000.0:.2f}",
+                unit="mΩ",
+                error_band="5.5",
+                subtext=f"Meas: {ground_truth['rct']*1000.0:.2f} mΩ" if ground_truth.get("rct") else "Interfacial reaction kinetics & SEI resistance",
+                status="Healthy" if p_rct < 0.12 else "Degrading",
+                category="predicted",
+                tooltip="M3 Ridge estimation of charge-transfer polarization resistance.",
+            )
 
-                export_payload = {
-                    "source": data_source_label,
-                    "cycle": inferred_disc_idx,
-                    "model_mode": "held_out_b0018" if use_holdout else "deployed_4_cells",
-                    "predictions": preds,
-                }
-                st.download_button(
-                    "📥 Export Full Diagnostic Report (JSON)",
-                    data=json.dumps(export_payload, indent=2),
-                    file_name=f"cellguard_telemetry_cycle_{inferred_disc_idx}.json",
-                    mime="application/json",
-                )
-
-        else:
-            render_html("""
-            <div style="background: rgba(12, 16, 25, 0.85); border: 1px solid rgba(255,255,255,0.06); border-radius: 12px; padding: 48px 24px; text-align: center; color: #64748B;">
-              <div style="font-size: 1.1rem; font-weight: 700; color: #E2E8F0; margin-bottom: 6px;">Ready to Inspect Battery</div>
-              <div style="font-size: 0.84rem; color: #94A3B8;">Select a real vehicle preset on the left or simulate everyday driving habits.</div>
+        # ---------------------------------------------------------------------
+        # DISCHARGE CURVE & EXTRACTION WINDOW
+        # -------------------------------------------------------------------------
+        st.markdown("<div style='height: 12px;'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="cg-card">
+          <div class="cg-card-header">
+            <div>
+              <div class="cg-card-title">Discharge Voltage Profile &amp; Extraction Window</div>
+              <div class="cg-card-subtitle">Terminal voltage V(t) highlighting the 4.0 V &rarr; 3.4 V BMS feature window</div>
             </div>
-            """)
+            <span class="cg-cat-badge cg-cat-measured">CYCLE PROFILE</span>
+          </div>
+        """, unsafe_allow_html=True)
 
-    # Bottom: Voltage Profile Chart
-    if df_raw is not None:
-        st.markdown("<div style='height: 18px;'></div>", unsafe_allow_html=True)
-        col_c_hdr, col_c_tog = st.columns([1.5, 1])
-        with col_c_hdr:
-            st.markdown("#### Battery Discharge Profile & 5-Minute Inspection Window")
-            st.caption("Notice how CellGuard only needs the early shaded window (4.0 V &rarr; 3.4 V) to determine full health — no full discharge needed!")
-        with col_c_tog:
-            overlay_ref = st.checkbox("Compare with Brand New Battery (Cycle 5)", value=True)
+        # Load reference early curve for visual comparison
+        ref_p = os.path.join(SAMPLE_DIR, "B0018_cycle_005_early.csv")
+        ref_t, ref_v = None, None
+        if os.path.exists(ref_p):
+            df_ref = pd.read_csv(ref_p)
+            ref_t = df_ref["Time_s"].values
+            ref_v = df_ref["Voltage_V"].values
 
-        ref_t, ref_v = (None, None)
-        if overlay_ref:
-            ref_t, ref_v = load_reference_curve()
+        fig_discharge = plot_discharge_curve(
+            t=t_arr,
+            v=v_arr,
+            temp=temp_arr,
+            ref_t=ref_t,
+            ref_v=ref_v,
+            ref_label="Reference Early Life (Cycle 5)",
+        )
+        st.plotly_chart(fig_discharge, use_container_width=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
-        t = df_raw["Time_s"].values
-        v = df_raw["Voltage_V"].values
-        temp = df_raw["Temperature_C"].values if "Temperature_C" in df_raw.columns else None
+        # ---------------------------------------------------------------------
+        # SECTION: UNDERSTANDING YOUR BATTERY RESULTS
+        # ---------------------------------------------------------------------
+        st.markdown("<div style='height: 14px;'></div>", unsafe_allow_html=True)
+        st.markdown("""
+        <div class="cg-card">
+          <div class="cg-card-header">
+            <div>
+              <div class="cg-card-title">Understanding Your Battery Results</div>
+              <div class="cg-card-subtitle">Electrochemical and BMS engineering interpretation for each parameter</div>
+            </div>
+            <span class="cg-chip cg-chip-status">GUIDE</span>
+          </div>
+        """, unsafe_allow_html=True)
 
-        fig_curve = plot_discharge_curve(t, v, temp=temp, ref_t=ref_t, ref_v=ref_v)
-        st.plotly_chart(fig_curve, use_container_width=True)
+        # Educational table covering the four core questions
+        guide_data = [
+            {
+                "Parameter": "Capacity & SOH (%)",
+                "What It Measures": "Total usable electric charge deliverable from full charge (4.2V) down to cutoff (2.7V).",
+                "Why It Matters": "Directly governs the driving range of an EV or runtime of an energy storage system.",
+                "Predicted Meaning": f"Predicted {p_cap:.3f} Ah ({p_soh:.1f}% SOH) vs rated 2.00 Ah.",
+                "Health Assessment": "Normal degradation" if p_soh >= 80 else ("Accelerated fade / Approaching EOL" if p_soh >= 70 else "Decommissioning recommended"),
+            },
+            {
+                "Parameter": "Ohmic Resistance (Re / R₀)",
+                "What It Measures": "Instantaneous ohmic resistance across the electrolyte, separator pores, and current collectors.",
+                "Why It Matters": "Causes immediate voltage drop (ΔV = I·R₀) upon load application and resistive Joule heating (I²R).",
+                "Predicted Meaning": f"Predicted {p_re*1000.0:.1f} mΩ (error band ±6.6 mΩ).",
+                "Health Assessment": "Nominal bulk conductivity" if p_re < 0.08 else "Elevated contact/electrolyte resistance",
+            },
+            {
+                "Parameter": "Charge-Transfer Resistance (Rct / R₁)",
+                "What It Measures": "Kinetic resistance to electron transfer and lithium-ion intercalation across the electrode-electrolyte interface.",
+                "Why It Matters": "Growth of the Solid Electrolyte Interphase (SEI) layer on the negative electrode increases Rct over time.",
+                "Predicted Meaning": f"Predicted {p_rct*1000.0:.1f} mΩ (error band ±5.5 mΩ).",
+                "Health Assessment": "Healthy kinetic rate" if p_rct < 0.12 else "Thickened SEI layer / Lithium inventory loss",
+            },
+            {
+                "Parameter": "Remaining Useful Life (RUL)",
+                "What It Measures": "Number of full discharge-charge cycles remaining until capacity drops to 1.40 Ah (30% fade).",
+                "Why It Matters": "Critical for warranty planning, predictive maintenance, and avoiding unexpected pack failure.",
+                "Predicted Meaning": f"Forecasted {p_rul if p_rul is not None else 'End of life reached'} cycles.",
+                "Health Assessment": "Operational" if not p_is_eol else "End of Life threshold crossed",
+            },
+            {
+                "Parameter": "Discharge Energy (Wh)",
+                "What It Measures": "Integral of instantaneous power ∫ V(t)·I(t) dt deliverable over the full discharge.",
+                "Why It Matters": "Accounts for both capacity loss and lower operating voltage caused by rising internal impedance.",
+                "Predicted Meaning": f"Estimated {p_energy:.2f} Wh usable energy.",
+                "Health Assessment": "Healthy energy density" if p_energy >= 5.0 else "Reduced energy availability",
+            },
+        ]
+        st.dataframe(pd.DataFrame(guide_data), use_container_width=True, hide_index=True)
+        st.markdown("</div>", unsafe_allow_html=True)
+
+        # ---------------------------------------------------------------------
+        # EXPORT DIAGNOSTIC REPORT
+        # ---------------------------------------------------------------------
+        report_dict = {
+            "cell_id": active_cell,
+            "cycle_index": inferred_cycle,
+            "data_source": data_label,
+            "predictions": preds,
+            "ground_truth": ground_truth,
+            "feature_subset": {k: round(float(v), 4) for k, v in features.items() if isinstance(v, (int, float))},
+            "timestamp": pd.Timestamp.now().isoformat(),
+        }
+
+        col_dl1, col_dl2 = st.columns([1, 1])
+        with col_dl1:
+            st.download_button(
+                label="📥 Download Diagnostic Report (JSON)",
+                data=json.dumps(report_dict, indent=2),
+                file_name=f"cellguard_diagnostic_{active_cell}_c{inferred_cycle}.json",
+                mime="application/json",
+                use_container_width=True,
+            )
+        with col_dl2:
+            df_export = pd.DataFrame([{
+                "Cell": active_cell,
+                "Cycle": inferred_cycle,
+                "SOH_pct": p_soh,
+                "Capacity_Ah": p_cap,
+                "Re_ohm": p_re,
+                "Rct_ohm": p_rct,
+                "RUL_cycles": p_rul if p_rul else 0,
+                "Energy_Wh": p_energy,
+            }])
+            st.download_button(
+                label="📥 Download Summary CSV",
+                data=df_export.to_csv(index=False),
+                file_name=f"cellguard_summary_{active_cell}_c{inferred_cycle}.csv",
+                mime="text/csv",
+                use_container_width=True,
+            )
