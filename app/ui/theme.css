@@ -59,6 +59,27 @@ html, body, [class*="css"] {
   background-color: var(--cg-bg);
 }
 
+/* Guided diagnostics page */
+.cg-hero {
+  background: linear-gradient(120deg, #0B1735 0%, #15356A 62%, #0E7490 125%);
+  border-radius: 18px;
+  padding: 30px 34px;
+  margin: 0 0 22px 0;
+  color: #F8FAFC;
+  box-shadow: 0 14px 32px rgba(15, 23, 42, .14);
+}
+.cg-hero .cg-eyebrow { color: #93C5FD; font: 700 .72rem var(--cg-font-mono); letter-spacing: .12em; }
+.cg-hero h1 { color: #FFFFFF; font-size: clamp(1.8rem, 3vw, 2.6rem); line-height: 1.1; margin: 10px 0 8px; letter-spacing: -.04em; }
+.cg-hero p { color: #DBEAFE; max-width: 760px; font-size: 1rem; margin: 0; line-height: 1.6; }
+.cg-step-row { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-top: 22px; color: #E0F2FE; font: 600 .78rem var(--cg-font-mono); }
+.cg-step-row b { color: #67E8F9; }
+div[data-testid="stTabs"] button[role="tab"] { border-radius: 10px 10px 0 0; }
+div[data-testid="stMetric"] { background: #FFFFFF; border: 1px solid #E2E8F0; border-radius: 14px; padding: 16px 18px; box-shadow: 0 3px 12px rgba(15, 23, 42, .04); min-height: 118px; }
+div[data-testid="stMetricLabel"] p { color: #64748B; font-size: .78rem; font-weight: 650; }
+div[data-testid="stMetricValue"] { color: #10234A; font-family: var(--cg-font-mono); font-size: 1.65rem; }
+.stButton > button[kind="primary"] { border-radius: 10px; font-weight: 700; min-height: 48px; box-shadow: 0 6px 14px rgba(37, 99, 235, .18); }
+.stDownloadButton > button { border-radius: 10px; }
+
 /* Sidebar Customization: Deep Navy Blue */
 section[data-testid="stSidebar"] {
   background-color: var(--cg-sidebar-bg) !important;
@@ -468,3 +489,63 @@ code {
 ::-webkit-scrollbar-thumb:hover {
   background: #94A3B8;
 }
+
+/* CellGuard Studio: shared visual language for the full multi-page workspace */
+:root {
+  --cg-bg: #F3F6FB;
+  --cg-card-bg: #FFFFFF;
+  --cg-sidebar-bg: #081327;
+  --cg-text-primary: #12213A;
+  --cg-text-secondary: #52627B;
+  --cg-text-muted: #71819A;
+  --cg-accent-blue: #476BFF;
+  --cg-accent-teal: #16BFA8;
+  --cg-border-subtle: #E4EAF2;
+  --cg-shadow-card: 0 10px 30px rgba(18, 33, 58, .055);
+  --text-secondary: #52627B;
+}
+html, body, .stApp { background: #F3F6FB !important; color: #12213A; }
+.block-container { max-width: 1500px !important; padding-top: 1.4rem !important; padding-bottom: 3.5rem !important; }
+section[data-testid="stSidebar"] { background: linear-gradient(180deg, #071226 0%, #0B1931 100%) !important; border-right: 1px solid rgba(148, 163, 184, .14); }
+div[data-testid="stSidebarNav"] { padding: 14px 10px 12px; }
+div[data-testid="stSidebarNav"] a { border-radius: 11px; padding: .65rem .78rem; margin: 3px 0; color: #A7B6CD !important; font-weight: 550; transition: .18s ease; }
+div[data-testid="stSidebarNav"] a:hover { background: rgba(108, 145, 255, .12) !important; color: white !important; transform: translateX(2px); }
+div[data-testid="stSidebarNav"] a[aria-current="page"] { background: linear-gradient(100deg, rgba(71,107,255,.25), rgba(22,191,168,.12)) !important; border: 1px solid rgba(119,152,255,.25); border-left: 3px solid #42D6C3; color: #FFFFFF !important; }
+.cg-dashboard-hero, .cg-page-hero { position: relative; isolation: isolate; overflow: hidden; border-radius: 24px; padding: 36px 42px 26px; margin: 0 0 26px; color: #F7FAFF; background: radial-gradient(ellipse at 85% 0%, rgba(66,214,195,.23), transparent 34%), linear-gradient(118deg, #08162E 0%, #12294D 55%, #20386A 100%); box-shadow: 0 22px 54px rgba(12, 30, 59, .18); }
+.cg-dashboard-hero { min-height: 285px; display: flex; flex-direction: column; justify-content: center; }
+.cg-dashboard-hero h1, .cg-page-hero h1 { position: relative; z-index: 2; color: #F8FAFC; font-size: clamp(2.3rem, 4vw, 3.7rem); line-height: 1.02; letter-spacing: -.055em; margin: 18px 0 12px; font-weight: 750; }
+.cg-dashboard-hero h1 em { color: #56DEC9; font-style: normal; }
+.cg-dashboard-hero p, .cg-page-hero p { position: relative; z-index: 2; max-width: 760px; color: #C5D3E8; font-size: 1rem; line-height: 1.65; margin: 0; }
+.cg-eyebrow { position: relative; z-index: 2; color: #73E5D4; font: 700 .69rem var(--cg-font-mono); letter-spacing: .15em; }
+.cg-eyebrow span { color: #A9BBD5; margin-left: 12px; letter-spacing: .09em; }
+.cg-hero-foot { position: relative; z-index: 2; display: flex; gap: 22px; align-items: center; margin-top: 26px; color: #9FB2CD; font: 600 .65rem var(--cg-font-mono); letter-spacing: .07em; }
+.cg-hero-foot i { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: #42D6C3; box-shadow: 0 0 12px #42D6C3; margin-right: 7px; }
+.cg-hero-orb { position: absolute; z-index: -1; border: 1px solid rgba(141,174,255,.14); border-radius: 50%; }
+.cg-orb-one { width: 370px; height: 370px; right: 8%; top: -46%; box-shadow: 0 0 0 34px rgba(141,174,255,.025), 0 0 0 72px rgba(141,174,255,.02); }
+.cg-orb-two { width: 190px; height: 190px; right: 22%; bottom: -58%; border-color: rgba(66,214,195,.17); }
+.cg-page-hero { padding: 27px 34px; margin-bottom: 23px; }
+.cg-page-hero h1 { font-size: clamp(1.9rem, 3vw, 2.7rem); margin: 10px 0 8px; }
+.cg-section-label { margin: 25px 0 12px; color: #77869D; font: 700 .68rem var(--cg-font-mono); letter-spacing: .12em; }
+.cg-health-banner { padding: 12px 16px; border-radius: 12px; margin: 12px 0 4px; font-size: .85rem; font-weight: 650; }
+.cg-health-banner span { margin-right: 7px; }
+.cg-health-good { background: #E8F8F3; color: #087B67; border: 1px solid #BCEADD; }
+.cg-health-mid { background: #FFF5E8; color: #9A5B09; border: 1px solid #F3D7A7; }
+.cg-health-low { background: #FFF0F2; color: #B3334E; border: 1px solid #F2C3CC; }
+.cg-nav-card, .cg-formula-card { height: 100%; min-height: 154px; padding: 20px; border-radius: 16px; background: #FFFFFF; border: 1px solid #E5EBF3; box-shadow: 0 8px 24px rgba(18,33,58,.04); }
+.cg-nav-card span, .cg-formula-kicker { color: #16A995; font: 700 .7rem var(--cg-font-mono); letter-spacing: .1em; }
+.cg-nav-card h3, .cg-formula-card h3 { color: #132542; font-size: 1rem; margin: 10px 0 7px; }
+.cg-nav-card p, .cg-formula-card p { color: #65758D; font-size: .82rem; line-height: 1.55; }
+.cg-formula-card { min-height: 204px; margin-bottom: 14px; }
+.cg-formula-card code { display: block; margin-top: 12px; padding: 10px !important; border-radius: 9px !important; color: #2D4771 !important; background: #F1F5FA !important; white-space: normal; }
+div[data-testid="stMetric"] { background: #FFFFFF; border: 1px solid #E4EAF2; border-radius: 15px; padding: 16px 18px; box-shadow: 0 8px 24px rgba(18,33,58,.045); min-height: 108px; }
+div[data-testid="stMetricLabel"] p { color: #687993; font-size: .75rem; font-weight: 650; }
+div[data-testid="stMetricValue"] { color: #142543; font-family: var(--cg-font-mono); font-size: 1.55rem; letter-spacing: -.04em; }
+div[data-testid="stTabs"] button[role="tab"] { border-radius: 10px 10px 0 0; font-weight: 650; }
+.cg-card { border-radius: 15px; box-shadow: 0 9px 26px rgba(18,33,58,.045); border-color: #E4EAF2; }
+.cg-card-title { color: #172B49 !important; }
+.cg-card-subtitle { color: #71819A !important; }
+.cg-launch-hero { border-radius: 18px; background: linear-gradient(118deg, #0B1830, #1A3763); box-shadow: 0 14px 34px rgba(18,33,58,.12); }
+.cg-launch-hero code { background: rgba(255,255,255,.1) !important; color: #D9E6F8 !important; border-color: rgba(255,255,255,.12) !important; }
+.stButton > button, .stDownloadButton > button { border-radius: 11px; font-weight: 650; min-height: 42px; }
+div[data-testid="stDataFrame"] { border-radius: 12px; border-color: #E4EAF2; }
+@media (max-width: 720px) { .cg-dashboard-hero, .cg-page-hero { padding: 27px 23px; border-radius: 18px; } .cg-dashboard-hero { min-height: 245px; } .cg-hero-foot { flex-direction: column; align-items: flex-start; gap: 8px; } }

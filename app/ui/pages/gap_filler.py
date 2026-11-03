@@ -1,190 +1,73 @@
-"""
-gap_filler.py - Missing-data gap-filling demonstration for impedance (M2: Re and Rct).
-Simulates missing EIS cycles under random (10/20/30%) and contiguous block masking.
-Compares ML model against within-cell linear interpolation, LOCF, and mean fill.
-"""
+"""Interactive missing-reading recovery exercise for impedance history."""
 
-import streamlit as st
-import pandas as pd
 import numpy as np
-
-from ui.components import (
-    render_kpi,
-    status_chip_html,
-    alert_box,
-    render_html,
-)
-from ui.charts import plot_gap_filling_comparison, plot_model_baseline_bar
+import pandas as pd
+import plotly.graph_objects as go
+import streamlit as st
 
 
 def render_gap_filler(predictor, feature_table: pd.DataFrame, metrics: dict):
-    """Render the Missing-Data Gap Filler page."""
     st.markdown("""
-    <div style="margin-bottom: 16px;">
-      <h2 style="font-size: 1.85rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em; margin: 0 0 4px 0;">
-        🧩 Smart Sensor Gap Filler
-      </h2>
-      <p style="font-size: 0.92rem; color: #94A3B8; margin: 0;">
-        How CellGuard recovers missing battery resistance telemetry when laboratory sensors are unavailable.
-      </p>
-    </div>
+    <section class="cg-page-hero">
+      <div class="cg-eyebrow">IMPEDANCE TOOL <span>REPAIR A MISSING STRETCH</span></div>
+      <h1>Fill missing readings</h1>
+      <p>Hide a section of a recorded resistance history, restore it, and compare the recovered values with the original measurements.</p>
+    </section>
     """, unsafe_allow_html=True)
+    controls = st.columns(4)
+    cells = sorted(feature_table.cell.dropna().unique()) if not feature_table.empty else []
+    with controls[0]:
+        cell = st.selectbox("Battery", cells, key="gap_cell")
+    with controls[1]:
+        target = st.selectbox("Reading", ["Re", "Rct"], key="gap_target")
+    with controls[2]:
+        mode = st.selectbox("Missing pattern", ["Short random gaps", "One long gap"])
+    with controls[3]:
+        fill_method = st.selectbox("Recovery method", ["Linear interpolation", "Carry previous value", "Median fill"])
 
-    # Friendly Plain-English Explanation
-    render_html("""
-    <div class="cg-launch-hero" style="padding: 16px 22px; margin-bottom: 18px;">
-      <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 6px;">
-        <span class="cg-launch-badge">💡 REAL-WORLD SENSOR RECOVERY</span>
-        <span style="font-size: 0.82rem; color: #E2E8F0; font-weight: 700;">No Expensive Lab Hardware Required</span>
-      </div>
-      <div style="font-size: 0.85rem; color: #CBD5E1; line-height: 1.55;">
-        In real electric vehicles, measuring internal chemical resistance (EIS) requires expensive laboratory equipment that cannot fit inside a car. 
-        What happens when sensor readings are missing? 
-        CellGuard's AI accurately estimates internal electrolyte flow resistance (<code>Re</code>) and reaction speed (<code>Rct</code>) 
-        across missing cycles, outperforming naive averages especially during long data gaps!
-      </div>
-    </div>
-    """)
-
-    # Controls row
-    col_c1, col_c2, col_c3 = st.columns([1, 1, 1])
-    with col_c1:
-        cell_choice = st.selectbox(
-            "Select Cell to Audit:",
-            ["B0018", "B0005", "B0006", "B0007"],
-            index=0,
-            help="B0018 is the primary held-out benchmark.",
-        )
-    with col_c2:
-        mask_mode = st.selectbox(
-            "Masking Experiment:",
-            ["Contiguous Block (15 Cycles Gap)", "Random Mask 10%", "Random Mask 20%", "Random Mask 30%"],
-            index=0,
-        )
-    with col_c3:
-        target_param = st.selectbox(
-            "Impedance Parameter:",
-            ["Rct (Charge-Transfer Resistance)", "Re (Ohmic Resistance)"],
-            index=0,
-        )
-        target_col = "Rct" if "Rct" in target_param else "Re"
-
-    # Filter cell rows with valid EIS measurements
-    cdf = feature_table[(feature_table["cell"] == cell_choice) & (feature_table[target_col].notna())].copy()
-    cdf = cdf.sort_values("disc_idx").reset_index(drop=True)
-
-    n_samples = len(cdf)
-    if n_samples < 10:
-        alert_box(f"Insufficient EIS measurements for cell {cell_choice}.", alert_type="warn")
+    data = feature_table[(feature_table.cell == cell) & feature_table[target].notna()].sort_values("disc_idx").copy()
+    if len(data) < 8:
+        st.warning("This cell has too few resistance records for a gap exercise.")
         return
+    cycles = data.disc_idx.to_numpy(int)
+    actual = data[target].to_numpy(float)
+    gap_size = st.slider("Gap size", min_value=2, max_value=max(2, min(20, len(data) - 2)), value=min(10, max(2, len(data) - 2)))
+    rng = np.random.default_rng(42)
+    if mode == "One long gap":
+        start = int(rng.integers(1, max(2, len(data) - gap_size)))
+        missing = np.arange(start, min(start + gap_size, len(data) - 1))
+    else:
+        choices = np.arange(1, len(data) - 1)
+        missing = np.sort(rng.choice(choices, size=min(gap_size, len(choices)), replace=False))
 
-    # Deterministic masking logic
-    rng = np.random.RandomState(42)
-    masked_mask = np.zeros(n_samples, dtype=bool)
+    observed = actual.copy()
+    observed[missing] = np.nan
+    series = pd.Series(observed)
+    if fill_method == "Linear interpolation":
+        filled = series.interpolate(limit_direction="both").to_numpy()
+    elif fill_method == "Carry previous value":
+        filled = series.ffill().bfill().to_numpy()
+    else:
+        filled = series.fillna(float(np.nanmedian(observed))).to_numpy()
+    mae = float(np.mean(np.abs(actual[missing] - filled[missing])))
+    rmse = float(np.sqrt(np.mean((actual[missing] - filled[missing]) ** 2)))
 
-    if "Block" in mask_mode:
-        block_len = min(15, n_samples // 3)
-        start_idx = n_samples // 3
-        masked_mask[start_idx : start_idx + block_len] = True
-    elif "10%" in mask_mode:
-        masked_mask[rng.choice(n_samples, size=int(0.10 * n_samples), replace=False)] = True
-    elif "20%" in mask_mode:
-        masked_mask[rng.choice(n_samples, size=int(0.20 * n_samples), replace=False)] = True
-    else:  # 30%
-        masked_mask[rng.choice(n_samples, size=int(0.30 * n_samples), replace=False)] = True
+    st.markdown('<div class="cg-section-label">RECOVERY SUMMARY</div>', unsafe_allow_html=True)
+    a, b, c = st.columns(3)
+    a.metric("Readings hidden", len(missing))
+    b.metric("Average recovery error", f"{mae * 1000:.2f} mΩ")
+    c.metric("Largest gap error", f"{rmse * 1000:.2f} mΩ", help="Root-mean-square error across the hidden points")
 
-    cycles = cdf["disc_idx"].values
-    measured_vals = cdf[target_col].values
-
-    # 1. Linear Interpolation baseline
-    s_interp = pd.Series(measured_vals).copy()
-    s_interp[masked_mask] = np.nan
-    interp_vals = s_interp.interpolate(method="linear").bfill().ffill().values
-
-    # 2. LOCF baseline
-    s_locf = pd.Series(measured_vals).copy()
-    s_locf[masked_mask] = np.nan
-    locf_vals = s_locf.ffill().bfill().values
-
-    # 3. Mean fill baseline
-    known_mean = np.mean(measured_vals[~masked_mask])
-    mean_vals = np.full_like(measured_vals, known_mean)
-
-    # 4. ML Model Prediction
-    model_wrapper = predictor.model_rct if target_col == "Rct" else predictor.model_re
-    pipe = model_wrapper["pipeline"]
-    feats_req = model_wrapper["features"]
-
-    X_eval = cdf[feats_req].copy()
-    ml_vals = pipe.predict(X_eval)
-
-    # Compute errors on masked cycles
-    true_masked = measured_vals[masked_mask]
-    mae_interp = float(np.mean(np.abs(interp_vals[masked_mask] - true_masked)))
-    mae_locf = float(np.mean(np.abs(locf_vals[masked_mask] - true_masked)))
-    mae_mean = float(np.mean(np.abs(mean_vals[masked_mask] - true_masked)))
-    mae_ml = float(np.mean(np.abs(ml_vals[masked_mask] - true_masked)))
-
-    # Chart display
-    fig_gap = plot_gap_filling_comparison(
-        cycles=cycles,
-        measured=measured_vals,
-        masked_mask=masked_mask,
-        ml_preds=ml_vals,
-        interp_preds=interp_vals,
-        target_name=target_col,
-    )
-    st.plotly_chart(fig_gap, use_container_width=True)
-
-    # Metrics Summary Row
-    st.markdown(f"#### Benchmarking Results on {int(np.sum(masked_mask))} Masked Cycles ({target_col})")
-    k1, k2, k3, k4 = st.columns(4)
-    with k1:
-        render_kpi(
-            label="Linear Interp MAE",
-            value=f"{mae_interp * 1000:.2f}",
-            unit="mΩ",
-            subtext="Within-cell linear baseline",
-            status="Healthy" if mae_interp <= mae_ml else "Degrading",
-        )
-    with k2:
-        render_kpi(
-            label="ML Model MAE",
-            value=f"{mae_ml * 1000:.2f}",
-            unit="mΩ",
-            subtext="Cross-cell regression pipeline",
-            status="Healthy" if mae_ml <= mae_interp else "Degrading",
-        )
-    with k3:
-        render_kpi(
-            label="LOCF Baseline MAE",
-            value=f"{mae_locf * 1000:.2f}",
-            unit="mΩ",
-            subtext="Last observation carried forward",
-            status="Degrading",
-        )
-    with k4:
-        render_kpi(
-            label="Mean Fill MAE",
-            value=f"{mae_mean * 1000:.2f}",
-            unit="mΩ",
-            subtext="Training set average fill",
-            status="End of Life",
-        )
-
-    # Honest Finding Callout Card (strictly per metrics.json m2_impedance findings)
-    render_html(f"""
-    <div class="cg-card" style="margin-top: 14px; border-left: 3px solid #22D3EE;">
-      <div style="font-size: 0.92rem; font-weight: 700; color: #FFFFFF; margin-bottom: 6px;">
-        🔬 Academic &amp; Engineering Finding (from metrics.json verification)
-      </div>
-      <div style="font-size: 0.85rem; color: var(--text-secondary); line-height: 1.55;">
-        <strong>Honest Finding:</strong> Within-cell linear interpolation beats cross-cell ML for Re and Rct in most small random masking cases (10% and 20%) 
-        because impedance changes very smoothly between adjacent cycles within a single cell.
-        <br/><br/>
-        <strong>Where ML Wins:</strong> Machine learning outperforms interpolation specifically for 
-        <strong>large contiguous block gaps</strong> (15+ cycles without EIS) and for <strong>Rct at 30% masking</strong> 
-        (MAE 0.00121 &Omega; for ML vs 0.00123 &Omega; for interpolation; block gap MAE 0.00125 &Omega; for ML vs 0.00146 &Omega; for interpolation).
-      </div>
-    </div>
-    """)
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=cycles, y=actual, name="Original record", mode="lines", line={"color": "#536783", "width": 1.8, "dash": "dot"}))
+    fig.add_trace(go.Scatter(x=cycles, y=filled, name="Recovered history", mode="lines+markers", line={"color": "#42D6C3", "width": 2.8}, marker={"size": 4}))
+    fig.add_trace(go.Scatter(x=cycles[missing], y=actual[missing], name="Hidden values · reference", mode="markers", marker={"color": "#F3AA58", "size": 9, "symbol": "x"}))
+    fig.update_layout(title=f"{cell} · {target} history", xaxis_title="Discharge cycle", yaxis_title="Resistance (Ω)", height=430,
+                      margin={"l": 8, "r": 12, "t": 48, "b": 10}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      font={"color": "#D5E1F2"}, legend={"orientation": "h", "y": 1.12, "x": 0})
+    fig.update_xaxes(gridcolor="rgba(148,163,184,.12)")
+    fig.update_yaxes(gridcolor="rgba(148,163,184,.12)")
+    st.plotly_chart(fig, use_container_width=True)
+    st.caption("This exercise hides known reference values so the recovered section can be compared with the original record.")
+    export = pd.DataFrame({"cycle": cycles, "original_ohm": actual, "recovered_ohm": filled, "was_hidden": np.isin(np.arange(len(data)), missing)})
+    st.download_button("Download recovered history", export.to_csv(index=False), file_name=f"{cell}_{target}_recovered.csv", mime="text/csv")

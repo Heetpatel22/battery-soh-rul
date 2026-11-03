@@ -33,6 +33,53 @@ FIGURES_DIR = os.path.join(ROOT_DIR, "figures")
 
 def render_performance(metrics: dict):
     """Render the Model Performance & Validation page."""
+    # Prefer the current 34-cell retraining report over legacy four-cell figures.
+    current_report = os.path.join(ROOT_DIR, "models", "training_metrics.json")
+    if os.path.exists(current_report):
+        import json
+        with open(current_report, "r", encoding="utf-8") as report_file:
+            report = json.load(report_file)
+        st.markdown("""
+        <section class="cg-page-hero">
+          <div class="cg-eyebrow">ACCURACY SNAPSHOT <span>REFERENCE RESULTS</span></div>
+          <h1>How close are the estimates?</h1>
+          <p>Review the typical difference between a CellGuard estimate and the recorded battery value.</p>
+        </section>
+        """, unsafe_allow_html=True)
+        dataset = report["dataset"]
+        a, b, c = st.columns(3)
+        a.metric("Distinct cells", dataset["unique_files"])
+        b.metric("Usable discharge cycles", f"{dataset['usable_discharge_rows']:,}")
+        c.metric("RUL-labelled cycles", f"{report['models']['rul']['validation']['n']:,}")
+        label_map = {"capacity": "Capacity (Ah)", "Re": "Ohmic resistance Re (Ω)",
+                     "Rct": "Charge-transfer resistance Rct (Ω)", "energy": "Discharge energy (Wh)",
+                     "rul": "Remaining useful life (cycles)"}
+        score_rows = []
+        for key, label in label_map.items():
+            item = report["models"].get(key, {})
+            score = item.get("validation", {})
+            if score:
+                test_type = "Later cycles · known history" if key == "Re" else "Held-out batteries"
+                score_rows.append({"Reading": label, "Comparison": test_type,
+                                   "Cycles": score["n"], "Batteries": score["cells"],
+                                   "MAE": round(score["mae"], 5), "Validation MSE": round(score["mse"], 6),
+                                   "RMSE": round(score["rmse"], 5),
+                                   "R²": round(score["r2"], 4)})
+        st.dataframe(pd.DataFrame(score_rows), hide_index=True, use_container_width=True)
+        st.caption("MAE and RMSE use the unit shown in each reading. R² is a scale-free fit score; values closer to 1 indicate closer agreement.")
+        rul_score = report["models"].get("rul", {}).get("validation", {})
+        if rul_score:
+            st.info(f"Battery-life scoring covers {rul_score['cells']} cells with a valid 1.40 Ah crossing. Typical difference: {rul_score['mae']:.1f} cycles.")
+        with st.expander("Per-cell validation details"):
+            for key, label in label_map.items():
+                score = report["models"].get(key, {}).get("validation", {})
+                if score.get("per_cell"):
+                    st.markdown(f"**{label}**")
+                    detail = pd.DataFrame.from_dict(score["per_cell"], orient="index").rename_axis("Held-out cell").reset_index()
+                    st.dataframe(detail, hide_index=True, use_container_width=True)
+        st.caption("Resistance tracking is compared against later cycles from the same battery history. Other readings are compared against batteries held out from the reference set.")
+        return
+
     # Ensure default session state
     if "selected_cell" not in st.session_state:
         st.session_state["selected_cell"] = "B0018"

@@ -38,9 +38,9 @@ def render_compact_header(
     page_title: str,
     selected_battery: str = "B0018",
     data_source: str = "NASA Ames Li-ion Aging Repository",
-    model_status: str = "LOCO Certified &bull; 5 Pipelines Active",
+    model_status: str = "Reference data connected",
 ):
-    """Render modern compact page header with live battery and model metadata."""
+    """Render the shared page header with battery and data-source context."""
     html = f"""
     <div style="display: flex; align-items: center; justify-content: space-between; background: #FFFFFF; border: 1px solid #CBD5E1; border-radius: 8px; padding: 10px 16px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(15,23,42,0.05); flex-wrap: wrap; gap: 10px;">
       <div style="display: flex; align-items: center; gap: 10px;">
@@ -75,21 +75,21 @@ def render_compact_header(
 
 
 def render_category_legend():
-    """Render scientific legend distinguishing Measured, Calculated, ML-Predicted, and Simulated data."""
+    """Render a plain-language legend for battery values."""
     html = """
     <div class="cg-category-legend">
       <span class="cg-legend-title">Data Provenance:</span>
-      <span class="cg-cat-badge cg-cat-measured" title="Direct experimental telemetry from battery cycler sensors">
-        ● Measured (Hardware Sensor)
+      <span class="cg-cat-badge cg-cat-measured" title="Direct experimental readings">
+        ● Sensor reading
       </span>
       <span class="cg-cat-badge cg-cat-calculated" title="Deterministic physical calculation (e.g. Coulomb counting, SOH ratio)">
-        ● Calculated (Deterministic)
+        ● Calculated
       </span>
-      <span class="cg-cat-badge cg-cat-predicted" title="Estimated via machine learning model with LOCO error bounds">
-        ● ML-Predicted (Statistical Inference)
+      <span class="cg-cat-badge cg-cat-predicted" title="Estimated from the available battery readings">
+        ● Estimated
       </span>
       <span class="cg-cat-badge cg-cat-simulated" title="Hypothetical or illustrative aging scenario">
-        ● Simulated (Scenario Model)
+        ● Example scenario
       </span>
     </div>
     """
@@ -149,7 +149,7 @@ def render_kpi(
         elif "calc" in cat_lower:
             cat_tag = '<span style="font-size:0.58rem; font-family:\'JetBrains Mono\', monospace; font-weight:700; padding:1px 5px; border-radius:3px; background:#EFF6FF; border:1px solid #BFDBFE; color:#1E40AF; white-space:nowrap; flex-shrink:0;">CALCULATED</span>'
         elif "pred" in cat_lower:
-            cat_tag = '<span style="font-size:0.58rem; font-family:\'JetBrains Mono\', monospace; font-weight:700; padding:1px 5px; border-radius:3px; background:#F5F3FF; border:1px solid #DDD6FE; color:#5B21B6; white-space:nowrap; flex-shrink:0;">ML PREDICTED</span>'
+            cat_tag = '<span style="font-size:0.58rem; font-family:\'JetBrains Mono\', monospace; font-weight:700; padding:1px 5px; border-radius:3px; background:#F5F3FF; border:1px solid #DDD6FE; color:#5B21B6; white-space:nowrap; flex-shrink:0;">ESTIMATED</span>'
         elif "sim" in cat_lower:
             cat_tag = '<span style="font-size:0.58rem; font-family:\'JetBrains Mono\', monospace; font-weight:700; padding:1px 5px; border-radius:3px; background:#FFFBEB; border:1px solid #FDE68A; color:#92400E; white-space:nowrap; flex-shrink:0;">SIMULATED</span>'
 
@@ -454,7 +454,7 @@ def render_sidebar_header():
           <div style="color: #94A3B8; font-weight: 600; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">OPERATIONAL MODE</div>
           <div style="color: #10B981; font-weight: 700; display: flex; align-items: center; gap: 6px;">
             <span style="width: 7px; height: 7px; border-radius: 50%; background: #10B981;"></span>
-            BMS Online &bull; M1-M5 Ready
+            Battery Diagnostics Ready
           </div>
           <div style="color: #64748B; font-size: 0.70rem; margin-top: 3px;">
             Partial-Window 4.0V &rarr; 3.4V Non-Destructive
@@ -470,9 +470,8 @@ def render_sidebar_footer():
         html = """
         <div class="cg-sidebar-footer">
           <div style="font-weight: 700; color: #E2E8F0; margin-bottom: 4px;">PLATFORM METADATA</div>
-          <div><strong>Dataset:</strong> NASA Ames Li-ion Aging (B0005, 06, 07, 18)</div>
-          <div><strong>Model Suite:</strong> Ridge &amp; Random Forest (LOCO Certified)</div>
-          <div><strong>Version:</strong> CellGuard v3.2 Enterprise</div>
+          <div><strong>Reference data:</strong> NASA Ames battery cycles</div>
+          <div><strong>Insights:</strong> Capacity, lifetime, impedance, and energy</div>
         </div>
         """
         render_html(html)
@@ -480,21 +479,13 @@ def render_sidebar_footer():
 
 def render_footer(metrics: dict = None):
     """Render clean application footer."""
-    versions = "scikit-learn 1.6.1 | numpy 2.1.3 | pandas 2.2.3"
-    if metrics and "environment_versions" in metrics:
-        v = metrics["environment_versions"]
-        versions = f"scikit-learn {v.get('scikit_learn', '1.6.1')} | numpy {v.get('numpy', '2.1.3')} | pandas {v.get('pandas', '2.2.3')}"
-
     html = f"""
     <div class="cg-footer">
       <div>
-        <strong>CellGuard</strong> &bull; Machine Learning-Based Battery State of Health, Impedance and RUL Estimation
-      </div>
-      <div style="font-family: 'JetBrains Mono', monospace; font-size: 0.72rem;">
-        {versions}
+        <strong>CellGuard</strong> &bull; Battery health, lifetime, impedance, and energy insights
       </div>
       <div>
-        NASA Ames PCoE Dataset &bull; Non-Destructive Early Scan (No Full Discharge Needed)
+      NASA Ames reference data &bull; Estimates use the 4.0V to 3.4V discharge window
       </div>
     </div>
     """

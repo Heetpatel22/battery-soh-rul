@@ -28,12 +28,12 @@
     "rul_model": "RandomForestRegressor"
   },
   "error_bands": {
-    "capacity_mae_loco": 0.04636909609192872,
+    "capacity_mae_loco": 0.10423277080245844,
     "capacity_rmse_loco": 0.050978829305294474,
-    "re_mae_loco": 0.006599651243822958,
-    "rct_mae_loco": 0.005497624558826256,
-    "rul_mae_loco": 15.234852003689175,
-    "energy_mae_loco": 0.14764994668592527
+    "re_mae_loco": 0.002657280672718257,
+    "rct_mae_loco": 0.01482767642258182,
+    "rul_mae_loco": 19.31477458199873,
+    "energy_mae_loco": 0.3482753270850026
   },
   "m1_capacity_loco": {
     "Ridge": {
@@ -620,5 +620,57 @@
       "importance": 0.0008949971288850667,
       "physics_explanation": "Electrical degradation indicator."
     }
-  ]
+  ],
+  "expanded_dataset_validation": {
+    "metrics_file": "training_metrics.json",
+    "validation_scheme": "Leave-One-Cell-Out grouped cross-validation, except Re uses per-cell forward validation",
+    "dataset": {
+      "source_files": 38,
+      "unique_files": 34,
+      "deduplication": "SHA-256 exact-file de-duplication",
+      "usable_discharge_rows": 2538,
+      "cells": 34,
+      "cells_list": [
+        "B0005",
+        "B0006",
+        "B0007",
+        "B0018",
+        "B0025",
+        "B0026",
+        "B0027",
+        "B0028",
+        "B0029",
+        "B0030",
+        "B0031",
+        "B0032",
+        "B0033",
+        "B0034",
+        "B0036",
+        "B0038",
+        "B0039",
+        "B0040",
+        "B0041",
+        "B0042",
+        "B0043",
+        "B0044",
+        "B0045",
+        "B0046",
+        "B0047",
+        "B0048",
+        "B0049",
+        "B0050",
+        "B0051",
+        "B0052",
+        "B0053",
+        "B0054",
+        "B0055",
+        "B0056"
+      ],
+      "capacity_filter_ah": [
+        0.5,
+        2.1
+      ],
+      "rul_label": "First valid observed capacity 0.50-1.40 Ah after an observed capacity > 1.40 Ah"
+    }
+  }
 }

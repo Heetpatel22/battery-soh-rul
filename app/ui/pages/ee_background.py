@@ -82,14 +82,11 @@ def render_thevenin_circuit_svg() -> str:
 def render_ee_background():
     """Render the How Batteries Work & EE Background page."""
     st.markdown("""
-    <div style="margin-bottom: 18px;">
-      <h2 style="font-size: 1.85rem; font-weight: 800; color: #FFFFFF; letter-spacing: -0.02em; margin: 0 0 4px 0;">
-        💡 How Batteries Work &amp; Why They Age
-      </h2>
-      <p style="font-size: 0.92rem; color: #94A3B8; margin: 0;">
-        Understand battery health through everyday human analogies, electrical circuit models (ECM), and BMS hardware integration.
-      </p>
-    </div>
+    <section class="cg-page-hero">
+      <div class="cg-eyebrow">ELECTRICAL ENGINEERING <span>BATTERY FUNDAMENTALS</span></div>
+      <h1>How batteries work</h1>
+      <p>Learn how charge, resistance, and voltage interact as a lithium-ion cell ages.</p>
+    </section>
     """, unsafe_allow_html=True)
 
     # 1. Everyday Analogy: The Water Pipe & Tank
@@ -184,21 +181,15 @@ def render_ee_background():
     # 5. BMS Embedded Feasibility
     render_html("""
     <div class="cg-card" style="border-left: 3px solid #22D3EE;">
-      <div style="font-size: 1rem; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">
-        ⚡ Embedded Feasibility: Can this run directly inside an automotive BMS microcontroller?
+      <div style="font-size: 1rem; font-weight: 700; color: #12213A; margin-bottom: 8px;">
+        ⚡ Signals already available to a battery management system
       </div>
       <div style="font-size: 0.88rem; color: var(--text-secondary); line-height: 1.6;">
         <p>
-          <strong>Yes, with near-zero power and memory footprint:</strong> CellGuard's deployed capacity and impedance models are regularized 
-          <strong>Ridge regression pipelines</strong>. Inference requires evaluating a single 18-element dot product: 
-          <code>y = &sum; (w_i &times; (x_i - &mu;_i) / &sigma;_i) + b</code>.
+          Battery management systems routinely record <strong>terminal voltage, current, and temperature</strong>. These signals describe the cell's response to charge and load.
         </p>
         <p>
-          On a standard automotive microcontroller (such as an ARM Cortex-M4 / STM32 / ESP32 running at 80 MHz), 
-          this calculation runs in <strong>under 5 microseconds</strong> and requires <strong>less than 2 KB of memory</strong>.
-        </p>
-        <p style="margin-bottom: 0;">
-          <strong>No Special Hardware Needed:</strong> Telemetry is sampled at standard <strong>0.1 Hz to 1 Hz</strong> frequencies with existing onboard voltage and temperature sensors.
+          Repeated measurements reveal capacity fade and voltage sag. Impedance sweeps can add detail about internal resistance when those measurements are available.
         </p>
       </div>
     </div>

@@ -72,7 +72,7 @@ def render_soc_soh(predictor, feature_table: pd.DataFrame, metrics: dict):
         page_title="SOC & SOH Dual Monitoring",
         selected_battery=active_cell,
         data_source="Coulomb Counting &bull; Capacity Retention",
-        model_status="Derived State Engine &bull; Zero Fabricated Models",
+        model_status="Charge and health tracking",
     )
 
     render_category_legend()

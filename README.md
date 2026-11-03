@@ -11,6 +11,8 @@
 
 ## 1. Project Overview
 
+> **Model and validation details:** See [ML_README.md](ML_README.md) for the expanded-dataset training run, estimator choices, LOCO metrics (MAE, RMSE, R²), and known limitations.
+
 This project treats lithium-ion cells as dynamic electrical components. Using terminal measurements that a standard Battery Management System (BMS) records non-invasively (terminal voltage, current, and surface temperature), machine learning pipelines estimate unobservable electrochemical states:
 
 1. **M1 — Capacity (Ah) & State of Health (SOH %)**: Estimated exclusively from an early partial discharge window ($4.0\text{ V} \to 3.4\text{ V}$) without requiring deep depletion to cutoff.
@@ -72,33 +74,30 @@ battery-soh-rul/
 
 ---
 
-## 3. Verified Performance Metrics (from `models/metrics.json`)
+## 3. Expanded Dataset Validation
 
-All metrics below are recorded directly from Leave-One-Cell-Out (LOCO) cross-validation:
+The current models use 34 SHA-256-deduplicated NASA cells. Capacity, Rct, energy, and RUL use grouped Leave-One-Cell-Out (LOCO) validation. Re uses a chronological split within known cells: first 80% of cycles train, last 20% test. Its score applies to later-cycle predictions for cells with prior history, not entirely unseen cells. Detailed results are in `models/training_metrics.json`:
 
-| Model Target | Deployed Algorithm | Cross-Validation Scheme | Mean LOCO MAE | Headline Unseen Cell (B0018) | Conventional Baseline MAE |
-| :--- | :--- | :--- | :---: | :---: | :---: |
-| **Capacity (Ah)** | **Ridge Regression** | Leave-One-Cell-Out (4 folds) | **0.0464 Ah** | **0.0142 Ah** | Coulomb Counting: 0.0131 Ah *(needs full cutoff)* |
-| **State of Health (%)** | **Ridge Regression** | Leave-One-Cell-Out (4 folds) | **2.32 %** | **0.71 %** | Training Mean Fill: 8.59 % |
-| **Ohmic Resistance ($R_e$)** | **Ridge Regression** | Leave-One-Cell-Out (4 folds) | **0.0066 $\Omega$** | **0.0041 $\Omega$** | Linear Interp: 0.0007–0.0012 $\Omega$ *(within-cell)* |
-| **Charge-Transfer ($R_{ct}$)** | **Ridge Regression** | Leave-One-Cell-Out (4 folds) | **0.0055 $\Omega$** | **0.0057 $\Omega$** | Linear Interp: 0.0011–0.0015 $\Omega$ |
-| **Remaining Useful Life** | **Random Forest** | Leave-One-Cell-Out (4 folds) | **15.23 cycles** | **7.71 cycles** | Polynomial Extrapolation |
-| **Discharge Energy (Wh)** | **Ridge Regression** | Leave-One-Cell-Out (4 folds) | **0.1476 Wh** | **0.0820 Wh** | Full Energy Integration *(needs cutoff)* |
+| Model Target | Estimator | Validation cells | MAE | MSE loss | RMSE | R² |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: |
+| **Capacity (Ah)** | Ridge Regression | 34 | **0.1042 Ah** | 0.02180 Ah² | 0.1477 Ah | 0.7635 |
+| **State of Health (%)** | Derived from capacity | 34 | **5.21 percentage points** | 54.50 points² | 7.38 points | 0.7635 |
+| **Ohmic Resistance ($R_e$)** | Extra Trees | 33 | **0.00266 $\Omega$** | 0.0000341 $\Omega^2$ | 0.00584 $\Omega$ | **0.9407** |
+| **Charge-Transfer ($R_{ct}$)** | Ridge Regression | 34 | **0.01483 $\Omega$** | 0.0004391 $\Omega^2$ | 0.02096 $\Omega$ | 0.8336 |
+| **Remaining Useful Life** | Random Forest | 17 | **19.31 cycles** | 709.40 cycles² | 26.63 cycles | 0.3709 |
+| **Discharge Energy (Wh)** | Ridge Regression | 34 | **0.3483 Wh** | 0.23811 Wh² | 0.4880 Wh | 0.7807 |
+
+RUL is a rough estimate and is evaluated only on cells with a valid observed 1.40 Ah crossing. Re's higher R² is from a within-cell forward split and should not be compared directly with unseen-cell LOCO scores. See [ML_README.md](ML_README.md) for feature preparation, model rationale, filters, and per-cell results.
 
 ---
 
 ## 4. Key Engineering Safeguards & Defensibility
 
-1. **Zero Label Leakage in M1**:
-   The capacity model strictly uses features extracted from the $4.0\text{ V} \to 3.4\text{ V}$ window. Total discharge time, discharge energy to cutoff, and minimum voltage are completely excluded, ensuring the model functions under partial discharge scenarios without trivial identity leakage.
-2. **Leave-One-Cell-Out (LOCO) Cross-Validation**:
-   No random splitting across cycles. Cycles from the same cell are never mixed between training and validation. Cell B0018 serves as the primary unseen benchmark.
-3. **Linear Extrapolation with Ridge**:
-   Under a 60/40 time-split, Ridge achieves an MAE of **0.0155 Ah**, outperforming decision tree ensembles (**0.0985 Ah** for GradientBoosting), which cannot extrapolate to lower capacities than seen during training.
-4. **Honest Gap-Filling Findings**:
-   Within a single cell, linear interpolation beats cross-cell ML for small random dropouts (10% and 20%) due to smooth degradation. Machine learning wins specifically for **large contiguous block dropouts (15+ cycles)** and **30% $R_{ct}$ masking**.
-5. **RUL Post-EOL Protection**:
-   The RUL model was trained exclusively on active pre-EOL cycles. When a cycle's predicted capacity drops to $\le 1.40\text{ Ah}$, the system displays **"End of life reached"** instead of an out-of-distribution cycle count.
+1. **Partial-window capacity input**: Capacity and energy estimates use the early 4.0 V to 3.4 V discharge feature window; complete-discharge totals are not used as model inputs.
+2. **Cell-grouped validation**: Validation holds out whole cells. It does not mix cycles from the same cell across a fold.
+3. **Dataset quality filters**: Exact duplicate files and implausible capacity/EIS labels are excluded; filters are recorded in `models/training_metrics.json`.
+4. **Validation scope**: Re's R² is 0.9407 for future cycles within known cell histories; it is not an unseen-cell score. RUL has only 17 eligible cells and a pooled MAE of about 19.3 cycles. See `ML_README.md` for limits.
+5. **RUL end-of-life handling**: If predicted capacity is at or below 1.40 Ah, the app reports “End of life reached” rather than a cycle estimate.
 
 ---
 
@@ -141,13 +140,9 @@ All unit tests in `tests/test_features.py` and `tests/test_round_trip.py` verify
 
 ---
 
-## 7. Retraining in Google Colab
+## 7. Retraining
 
-The pipeline is 100% reproducible:
-1. Open Google Colab and upload `notebooks/train_battery_models.ipynb`.
-2. Upload the 4 cell files (`B0005.mat`, `B0006.mat`, `B0007.mat`, `B0018.mat`) to Google Drive at `My Drive/Battery_ML/data/`.
-3. Select **Runtime &rarr; Run all**. The notebook executes data extraction, LOCO cross-validation, feature importance, and exports `battery_artifacts.zip` in under 15 minutes.
-4. Unzip `battery_artifacts.zip` into `models/`, `figures/`, and `sample_cycles/`.
+Install the dependencies in `requirements.txt`, keep the expanded NASA collection under `Battery_ML/5. Battery Data Set/`, then run `python src/train_models.py` from the repository root. This trains the current 34-cell models and refreshes `models/` artifacts and LOCO metrics. The notebooks retain the earlier four-cell experiment; use [ML_README.md](ML_README.md) for the current reproducible workflow.
 
 ---
 
