@@ -116,17 +116,15 @@ streamlit run app/streamlit_app.py
 ```
 Open your browser at `http://localhost:8501`.
 
-### 5.3 Deploy on Streamlit Community Cloud
+### 5.3 Deploy on Render
 
-The deployment entry point is `app/streamlit_app.py`. The repository includes the root-level `requirements.txt`, `.streamlit/config.toml`, trained model artifacts, feature table, and NASA `.mat` files used by the app.
+The repository is configured as a Render Blueprint using [`render.yaml`](render.yaml). It defines a Python web service that installs `requirements.txt` and launches `app/streamlit_app.py` on Render's assigned port. The root `.python-version` pins Python 3.12.11, and `.streamlit/config.toml` contains the app theme and Streamlit server settings.
 
-1. Push the repository and the branch you want to deploy to GitHub. Make sure the `data/` and `models/` folders are included; the app loads its reference data and model files from these paths at startup.
-2. In Streamlit Community Cloud, create an app and select the GitHub repository and branch.
-3. Set **Main file path** to `app/streamlit_app.py`.
-4. In **Advanced settings**, choose Python **3.12**. The dependencies support this runtime, and the saved scikit-learn pipelines require scikit-learn 1.6.1.
-5. Deploy. No secrets or environment variables are required.
+1. Push the repository, including `data/`, `models/`, `render.yaml`, `.python-version`, and `.streamlit/config.toml`, to GitHub.
+2. In Render, choose **New → Blueprint** and connect the GitHub repository and branch.
+3. Render reads `render.yaml` and creates the CellGuard web service. Confirm the planned service, then deploy it.
 
-The app uses paths relative to the repository root, so deploy from the repository root without moving the configuration or dependency files. After deployment, commits pushed to the selected branch are picked up by Community Cloud.
+No secrets or environment variables need to be added manually. The service binds to `0.0.0.0` and uses Render's `PORT` environment variable. Commits to the connected branch trigger new deploys.
 
 ### 5.4 Run Unit Tests
 ```bash

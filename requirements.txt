@@ -1,4 +1,4 @@
-# Streamlit Community Cloud runtime dependencies.
+# Render runtime dependencies.
 # Keep scikit-learn aligned with the serialized model artifacts in models/.
 streamlit==1.56.0
 numpy>=2.0,<3.0
