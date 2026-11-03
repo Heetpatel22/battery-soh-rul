@@ -48,12 +48,15 @@ def render_life_rul(predictor, feature_table: pd.DataFrame, metrics: dict):
                              marker={"color": "#FFFFFF", "size": 11, "line": {"color": "#42D6C3", "width": 3}}))
     if predicted_rul is not None and not forecast.get("is_eol") and pd.notna(row.capacity):
         eol_cycle = cycle + int(predicted_rul)
-        fig.add_trace(go.Scatter(x=[cycle, eol_cycle], y=[row.capacity, 1.4], name="Estimated horizon",
-                                 mode="lines", line={"color": "#F3AA58", "width": 2, "dash": "dot"}))
-    fig.update_layout(title=f"Capacity trajectory · {cell}", xaxis_title="Discharge cycle", yaxis_title="Capacity (Ah)",
-                      height=450, margin={"l": 8, "r": 12, "t": 48, "b": 10}, paper_bgcolor="rgba(0,0,0,0)",
-                      plot_bgcolor="rgba(0,0,0,0)", font={"color": "#D5E1F2"}, legend={"orientation": "h", "y": 1.12, "x": 0})
+        fig.add_vline(x=eol_cycle, line_dash="dot", line_color="#F3AA58", line_width=2,
+                      annotation_text=f"Estimated horizon · cycle {eol_cycle}",
+                      annotation_position="top right", annotation_font_color="#A56816")
+    st.markdown("#### Recorded capacity and estimated horizon")
+    fig.update_layout(title={"text": ""}, xaxis_title="Discharge cycle", yaxis_title="Capacity (Ah)",
+                      height=450, margin={"l": 8, "r": 12, "t": 24, "b": 10}, paper_bgcolor="rgba(0,0,0,0)",
+                      plot_bgcolor="rgba(0,0,0,0)", font={"color": "#D5E1F2"}, showlegend=False)
     fig.update_xaxes(gridcolor="rgba(148,163,184,.12)")
     fig.update_yaxes(gridcolor="rgba(148,163,184,.12)")
     st.plotly_chart(fig, use_container_width=True)
+    st.caption("The vertical marker shows the estimated end-of-life cycle. It is a planning horizon, not a predicted capacity curve.")
     st.markdown('<div class="cg-formula-card"><div class="cg-formula-kicker">END OF LIFE GUIDE</div><h3>What does 1.40 Ah mean?</h3><p>The reference study defines end of life as a 30% fade from the cell’s nominal 2.0 Ah capacity. Cycle-to-cycle capacity can fluctuate, so use the horizon as a planning aid.</p></div>', unsafe_allow_html=True)

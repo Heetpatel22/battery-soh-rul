@@ -62,9 +62,10 @@ def render_gap_filler(predictor, feature_table: pd.DataFrame, metrics: dict):
     fig.add_trace(go.Scatter(x=cycles, y=actual, name="Original record", mode="lines", line={"color": "#536783", "width": 1.8, "dash": "dot"}))
     fig.add_trace(go.Scatter(x=cycles, y=filled, name="Recovered history", mode="lines+markers", line={"color": "#42D6C3", "width": 2.8}, marker={"size": 4}))
     fig.add_trace(go.Scatter(x=cycles[missing], y=actual[missing], name="Hidden values · reference", mode="markers", marker={"color": "#F3AA58", "size": 9, "symbol": "x"}))
-    fig.update_layout(title=f"{cell} · {target} history", xaxis_title="Discharge cycle", yaxis_title="Resistance (Ω)", height=430,
-                      margin={"l": 8, "r": 12, "t": 48, "b": 10}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                      font={"color": "#D5E1F2"}, legend={"orientation": "h", "y": 1.12, "x": 0})
+    st.markdown(f"#### {cell} · {target} history")
+    fig.update_layout(title={"text": ""}, xaxis_title="Discharge cycle", yaxis_title="Resistance (Ω)", height=430,
+                      margin={"l": 8, "r": 12, "t": 78, "b": 10}, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                      font={"color": "#D5E1F2"}, legend={"orientation": "h", "y": 1.12, "x": 0, "yanchor": "bottom"})
     fig.update_xaxes(gridcolor="rgba(148,163,184,.12)")
     fig.update_yaxes(gridcolor="rgba(148,163,184,.12)")
     st.plotly_chart(fig, use_container_width=True)

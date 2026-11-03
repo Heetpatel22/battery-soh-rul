@@ -29,7 +29,28 @@ from ui.charts import apply_theme
 import plotly.graph_objects as go
 
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", ".."))
-SAMPLE_DIR = os.path.join(ROOT_DIR, "sample_cycles")
+@st.cache_data(show_spinner=False)
+def _load_mat_discharge(cell_id: str, discharge_index: int):
+    """Load one recorded discharge trace for the selected NASA cell/cycle."""
+    from scipy.io import loadmat
+
+    mat_path = os.path.join(ROOT_DIR, "data", f"{cell_id}.mat")
+    if not os.path.exists(mat_path):
+        return None
+    root = loadmat(mat_path, simplify_cells=True).get(cell_id, {})
+    cycles = root.get("cycle", []) if isinstance(root, dict) else []
+    if not isinstance(cycles, list):
+        cycles = list(np.asarray(cycles, dtype=object).reshape(-1))
+    discharges = [entry for entry in cycles if isinstance(entry, dict) and entry.get("type") == "discharge"]
+    if not 0 <= discharge_index < len(discharges):
+        return None
+    record = discharges[discharge_index].get("data", {})
+    return {
+        "time": np.asarray(record.get("Time", []), dtype=float).reshape(-1),
+        "voltage": np.asarray(record.get("Voltage_measured", []), dtype=float).reshape(-1),
+        "current": np.asarray(record.get("Current_measured", []), dtype=float).reshape(-1),
+        "temperature": np.asarray(record.get("Temperature_measured", []), dtype=float).reshape(-1),
+    }
 
 
 def calculate_coulomb_counting_soc(
@@ -131,27 +152,27 @@ def render_soc_soh(predictor, feature_table: pd.DataFrame, metrics: dict):
         selected_cell = cell_choice.split()[0]
         st.session_state["selected_cell"] = selected_cell
 
-    with col_ctrl2:
-        cycle_file_options = [
-            "B0018_cycle_005_early.csv (Fresh Cell &bull; Cycle 5)",
-            "B0018_cycle_015_early.csv (Early Use &bull; Cycle 15)",
-            "B0018_cycle_050_middle.csv (Mid Life &bull; Cycle 50)",
-            "B0018_cycle_065_middle.csv (Aging Pack &bull; Cycle 65)",
-            "B0018_cycle_100_late.csv (Retirement Limit &bull; Cycle 100)",
-            "None (Evaluate without Timeseries Telemetry)",
-        ]
-        chosen_telemetry = st.selectbox(
-            "Discharge Telemetry Timeseries (for Coulomb Counting SOC):",
-            cycle_file_options,
-            index=2,
-            help="Select a cycle dataset containing current and timestamps to compute derived SOC integration.",
-        )
-
-    # Filter cell table
+    # Resolve the selected cell first, then bind both cycle controls and plots
+    # to that cell's own history rather than a fixed B0018 sample trace.
     cell_df = feature_table[feature_table["cell"] == selected_cell].sort_values("disc_idx").reset_index(drop=True)
-    
+    cycle_numbers = (cell_df["disc_idx"].astype(int) + 1).tolist() if not cell_df.empty else []
+    if cycle_numbers:
+        default_cycle = min(cycle_numbers, key=lambda value: abs(value - 50))
+        with col_ctrl2:
+            selected_cycle_number = st.selectbox(
+                "Recorded discharge cycle:", cycle_numbers,
+                index=cycle_numbers.index(default_cycle), key="soh_selected_cycle",
+                format_func=lambda value: f"Cycle {value}",
+                help="Both the SOC trace and capacity history use this selected cell and cycle.",
+            )
+        current_cycle = int(selected_cycle_number) - 1
+    else:
+        with col_ctrl2:
+            st.info("No cycle history is available for this cell.")
+        current_cycle = 0
+    st.session_state["selected_cycle"] = current_cycle
+
     # Retrieve capacity and SOH for selected operating cycle
-    current_cycle = int(st.session_state.get("selected_cycle", 50))
     cycle_row = cell_df[cell_df["disc_idx"] == current_cycle] if not cell_df.empty else pd.DataFrame()
     if cycle_row.empty and not cell_df.empty:
         cycle_row = cell_df.iloc[[0]]
@@ -172,25 +193,19 @@ def render_soc_soh(predictor, feature_table: pd.DataFrame, metrics: dict):
     v_data = None
     i_data = None
 
-    if "None" not in chosen_telemetry:
-        fname = chosen_telemetry.split()[0]
-        fpath = os.path.join(SAMPLE_DIR, fname)
-        if os.path.exists(fpath):
-            df_ts = pd.read_csv(fpath)
-            t_data = df_ts["Time_s"].values
-            v_data = df_ts["Voltage_V"].values
-            i_data = df_ts["Current_A"].values
-            has_timeseries = True
-
-            # Calculate Coulomb counting
-            soc_curve, final_soc = calculate_coulomb_counting_soc(
-                t=t_data,
-                i=i_data,
-                usable_capacity_ah=curr_cap,
-                initial_soc_pct=100.0,
-            )
-            # Pick mid-cycle point or final
-            current_soc_display = float(soc_curve[len(soc_curve) // 2]) if len(soc_curve) > 0 else 50.0
+    selected_trace = _load_mat_discharge(selected_cell, current_cycle)
+    if selected_trace and len(selected_trace["time"]) > 1:
+        t_data = selected_trace["time"]
+        v_data = selected_trace["voltage"]
+        i_data = selected_trace["current"]
+        has_timeseries = True
+        soc_curve, final_soc = calculate_coulomb_counting_soc(
+            t=t_data,
+            i=i_data,
+            usable_capacity_ah=curr_cap,
+            initial_soc_pct=100.0,
+        )
+        current_soc_display = float(soc_curve[len(soc_curve) // 2]) if len(soc_curve) > 0 else 50.0
 
     # -------------------------------------------------------------------------
     # MANDATORY COMPLIANCE CALLOUT & DUAL VISUALIZATION

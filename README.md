@@ -104,7 +104,7 @@ RUL is a rough estimate and is evaluated only on cells with a valid observed 1.4
 ## 5. Quickstart & Installation
 
 ### 5.1 Environment Setup
-Install the pinned dependencies matching the Colab training environment:
+Install the application dependencies (scikit-learn is pinned to match the saved model artifacts):
 ```bash
 cd battery-soh-rul
 pip install -r requirements.txt
@@ -116,7 +116,19 @@ streamlit run app/streamlit_app.py
 ```
 Open your browser at `http://localhost:8501`.
 
-### 5.3 Run Unit Tests
+### 5.3 Deploy on Streamlit Community Cloud
+
+The deployment entry point is `app/streamlit_app.py`. The repository includes the root-level `requirements.txt`, `.streamlit/config.toml`, trained model artifacts, feature table, and NASA `.mat` files used by the app.
+
+1. Push the repository and the branch you want to deploy to GitHub. Make sure the `data/` and `models/` folders are included; the app loads its reference data and model files from these paths at startup.
+2. In Streamlit Community Cloud, create an app and select the GitHub repository and branch.
+3. Set **Main file path** to `app/streamlit_app.py`.
+4. In **Advanced settings**, choose Python **3.12**. The dependencies support this runtime, and the saved scikit-learn pipelines require scikit-learn 1.6.1.
+5. Deploy. No secrets or environment variables are required.
+
+The app uses paths relative to the repository root, so deploy from the repository root without moving the configuration or dependency files. After deployment, commits pushed to the selected branch are picked up by Community Cloud.
+
+### 5.4 Run Unit Tests
 ```bash
 pytest -v
 ```

@@ -17,14 +17,11 @@ for path in (SRC_DIR, APP_DIR, ROOT_DIR):
 
 from inference import BatteryPredictor
 from ui.components import inject_theme, render_footer, render_sidebar_footer, render_sidebar_header
-from ui.pages.about_project import render_about_project
 from ui.pages.calculation_metrics import render_calculation_metrics
-from ui.pages.ee_background import render_ee_background
 from ui.pages.gap_filler import render_gap_filler
 from ui.pages.impedance import render_impedance
 from ui.pages.life_rul import render_life_rul
 from ui.pages.overview import render_overview
-from ui.pages.performance import render_performance
 from ui.pages.predict import render_predict
 from ui.pages.soc_soh import render_soc_soh
 
@@ -72,15 +69,16 @@ def _page(render_fn, *args):
 
 
 def overview_page():
-    _page(render_overview, predictor, metrics, feature_table)
+    workspace_pages = {
+        "Battery Health Check": battery_health_page,
+        "Calculation Metrics": calculation_metrics_page,
+        "Battery Life": battery_life_page,
+    }
+    _page(render_overview, predictor, metrics, feature_table, workspace_pages)
 
 
 def calculation_page():
     _page(render_calculation_metrics, feature_table)
-
-
-def accuracy_page():
-    _page(render_performance, metrics)
 
 
 def diagnostics_page():
@@ -103,25 +101,19 @@ def gap_page():
     _page(render_gap_filler, predictor, feature_table, metrics)
 
 
-def ee_page():
-    _page(render_ee_background)
-
-
-def about_page():
-    _page(render_about_project, metrics)
-
+overview_nav_page = st.Page(overview_page, title="Overview", icon="📊", default=True)
+calculation_metrics_page = st.Page(calculation_page, title="Calculation Metrics", icon="🧮")
+battery_health_page = st.Page(diagnostics_page, title="Battery Health Check", icon="🩺")
+battery_life_page = st.Page(rul_page, title="Battery Life", icon="⏳")
 
 pages = [
-    st.Page(overview_page, title="Overview", icon="📊", default=True),
-    st.Page(calculation_page, title="Calculation Metrics", icon="🧮"),
-    st.Page(diagnostics_page, title="Battery Health Check", icon="🩺"),
+    overview_nav_page,
+    calculation_metrics_page,
+    battery_health_page,
     st.Page(soh_page, title="SOH & SOC", icon="⚡"),
-    st.Page(rul_page, title="Battery Life", icon="⏳"),
+    battery_life_page,
     st.Page(impedance_page, title="Impedance History", icon="🔬"),
-    st.Page(accuracy_page, title="Accuracy Snapshot", icon="🎯"),
     st.Page(gap_page, title="Fill Missing Readings", icon="🧩"),
-    st.Page(ee_page, title="Electrical Engineering", icon="🔋"),
-    st.Page(about_page, title="About CellGuard", icon="ℹ️"),
 ]
 
 st.navigation(pages).run()

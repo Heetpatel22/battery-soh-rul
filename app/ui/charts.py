@@ -26,12 +26,15 @@ def apply_theme(fig: go.Figure, height: int = 360, title: str = "") -> go.Figure
         font=dict(family="Inter, -apple-system, sans-serif", color="#0F172A", size=11),
         margin=dict(l=48, r=24, t=44 if title else 20, b=36),
         height=height,
+        # Plotly/Streamlit combinations can render a missing title as the
+        # literal word "undefined". Keep a concrete, empty title object for
+        # figures that intentionally have no chart title.
         title=dict(
             text=f"<b>{title}</b>" if title else "",
             font=dict(size=13, color="#0F172A", family="Inter, sans-serif"),
             x=0.01,
             y=0.97,
-        ) if title else None,
+        ),
         legend=dict(
             orientation="h",
             yanchor="bottom",
