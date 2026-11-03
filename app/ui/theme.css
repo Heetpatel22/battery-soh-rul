@@ -505,10 +505,28 @@ code {
   --text-secondary: #52627B;
 }
 html, body, .stApp { background: #F3F6FB !important; color: #12213A; }
-/* Hide deploy/development controls without removing the sidebar navigation toggle. */
-header[data-testid="stHeader"] { display: flex !important; background: rgba(243,246,251,.96) !important; }
-div[data-testid="stDecoration"] { display: none !important; }
-button[data-testid="stSidebarCollapseButton"], button[data-testid="stSidebarExpandButton"] { display: flex !important; visibility: visible !important; opacity: 1 !important; z-index: 1001 !important; }
+/* Collapse Streamlit's chrome, while keeping only the sidebar controls usable. */
+header[data-testid="stHeader"] {
+  height: 0 !important; min-height: 0 !important; overflow: visible !important;
+  background: transparent !important; box-shadow: none !important; visibility: hidden !important;
+}
+div[data-testid="stToolbar"] {
+  height: 0 !important; min-height: 0 !important; overflow: visible !important;
+  background: transparent !important; box-shadow: none !important; visibility: hidden !important;
+}
+div[data-testid="stDecoration"], div[data-testid="stStatusWidget"],
+div[data-testid="stToolbarActions"], button[data-testid="stMainMenu"],
+div[data-testid="stDeployButton"] { display: none !important; }
+button[data-testid="stSidebarCollapseButton"] {
+  display: flex !important; visibility: visible !important; opacity: 1 !important;
+  position: relative !important; z-index: 1002 !important;
+}
+button[data-testid="stExpandSidebarButton"] {
+  display: flex !important; visibility: visible !important; opacity: 1 !important;
+  position: fixed !important; top: .35rem !important; left: .55rem !important; z-index: 1003 !important;
+  background: rgba(255,255,255,.94) !important; border: 1px solid #D9E2EF !important;
+  border-radius: 9px !important; box-shadow: 0 4px 14px rgba(18,33,58,.12) !important;
+}
 .block-container { max-width: 1500px !important; padding-top: 1.4rem !important; padding-bottom: 3.5rem !important; }
 section[data-testid="stSidebar"] { background: linear-gradient(180deg, #071226 0%, #0B1931 100%) !important; border-right: 1px solid rgba(148, 163, 184, .14); }
 div[data-testid="stSidebarNav"] { padding: 14px 10px 12px; }
