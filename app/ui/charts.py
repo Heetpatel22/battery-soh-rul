@@ -17,34 +17,34 @@ from plotly.subplots import make_subplots
 from typing import Optional, List, Dict
 
 
-def apply_theme(fig: go.Figure, height: int = 360, title: str = "") -> go.Figure:
+def apply_theme(fig: go.Figure, height: int = 380, title: str = "") -> go.Figure:
     """Apply unified clean light industrial aesthetic to any Plotly figure."""
     fig.update_layout(
         template="plotly_white",
         paper_bgcolor="#FFFFFF",
         plot_bgcolor="#FAFAFC",
         font=dict(family="Inter, -apple-system, sans-serif", color="#0F172A", size=11),
-        margin=dict(l=48, r=24, t=44 if title else 20, b=36),
+        margin=dict(l=48, r=24, t=44 if title else 20, b=65),
         height=height,
         # Plotly/Streamlit combinations can render a missing title as the
         # literal word "undefined". Keep a concrete, empty title object for
         # figures that intentionally have no chart title.
         title=dict(
             text=f"<b>{title}</b>" if title else "",
-            font=dict(size=13, color="#0F172A", family="Inter, sans-serif"),
+            font=dict(size=12.5, color="#0F172A", family="Inter, sans-serif"),
             x=0.01,
             y=0.97,
         ),
         legend=dict(
             orientation="h",
-            yanchor="bottom",
-            y=1.02,
-            xanchor="right",
-            x=1.0,
-            bgcolor="rgba(255,255,255,0.85)",
+            yanchor="top",
+            y=-0.22,
+            xanchor="center",
+            x=0.5,
+            bgcolor="rgba(255,255,255,0.92)",
             bordercolor="#E2E8F0",
             borderwidth=1,
-            font=dict(size=10.5, color="#475569"),
+            font=dict(size=10, color="#475569"),
         ),
         xaxis=dict(
             gridcolor="#E2E8F0",
@@ -311,44 +311,474 @@ def plot_life_and_rul_trajectory(
     return apply_theme(fig, height=360, title="Battery Capacity Degradation & RUL Horizon")
 
 
-def plot_impedance_curves(
+def plot_re_rct_dual_trend(
     cell_df: pd.DataFrame,
-    target: str = "Re",
-    pred_val: Optional[float] = None,
+    cell_id: str = "B0005",
     current_cycle: Optional[int] = None,
+    pred_re: Optional[float] = None,
+    pred_rct: Optional[float] = None,
 ) -> go.Figure:
-    """Plot Ohmic (Re) or Charge-Transfer (Rct) impedance over cycle aging."""
+    """Plot both Ohmic (Re) and Charge-Transfer (Rct) resistance progression over battery cycles."""
     fig = go.Figure()
-    cdf = cell_df.dropna(subset=[target]).sort_values("disc_idx")
-    unit = "Ω"
-    title_param = "Ohmic Resistance Re (R₀)" if target == "Re" else "Charge-Transfer Resistance Rct (R₁)"
+    cdf = cell_df[cell_df["cell"] == cell_id].dropna(subset=["Re", "Rct"]).sort_values("disc_idx")
+    if cdf.empty:
+        cdf = cell_df.dropna(subset=["Re", "Rct"]).sort_values("disc_idx")
 
+    cycles = cdf["disc_idx"].values + 1  # 1-based cycle index for readability
+
+    # Re trace (Ohmic)
     fig.add_trace(
         go.Scatter(
-            x=cdf["disc_idx"],
-            y=cdf[target],
+            x=cycles,
+            y=cdf["Re"] * 1000.0,
             mode="lines+markers",
-            name=f"Measured {target} (EIS)",
-            line=dict(color="#0D9488" if target == "Re" else "#7C3AED", width=1.8),
-            marker=dict(size=4.5),
+            name="Measured Re (Ohmic, mΩ)",
+            line=dict(color="#0D9488", width=2.2),
+            marker=dict(size=4),
+            hovertemplate="Cycle %{x}<br>Re: %{y:.2f} mΩ<extra></extra>",
         )
     )
 
-    if current_cycle is not None and pred_val is not None:
+    # Rct trace (Charge-Transfer)
+    fig.add_trace(
+        go.Scatter(
+            x=cycles,
+            y=cdf["Rct"] * 1000.0,
+            mode="lines+markers",
+            name="Measured Rct (Charge-Transfer, mΩ)",
+            line=dict(color="#7C3AED", width=2.2),
+            marker=dict(size=4),
+            hovertemplate="Cycle %{x}<br>Rct: %{y:.2f} mΩ<extra></extra>",
+        )
+    )
+
+    # Total internal resistance (Re + Rct)
+    fig.add_trace(
+        go.Scatter(
+            x=cycles,
+            y=(cdf["Re"] + cdf["Rct"]) * 1000.0,
+            mode="lines",
+            name="Total R_int = Re + Rct (mΩ)",
+            line=dict(color="#0F172A", width=1.8, dash="dot"),
+            hovertemplate="Cycle %{x}<br>Total R_int: %{y:.2f} mΩ<extra></extra>",
+        )
+    )
+
+    # Current cycle vertical line and ML prediction diamond markers
+    if current_cycle is not None:
+        fig.add_vline(
+            x=current_cycle,
+            line_dash="dash",
+            line_color="#2563EB",
+            line_width=1.5,
+            annotation_text=f"Cycle {current_cycle}",
+            annotation_position="top left",
+            annotation_font=dict(size=9.5, color="#2563EB", family="JetBrains Mono"),
+        )
+        if pred_re is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[current_cycle],
+                    y=[pred_re * 1000.0],
+                    mode="markers",
+                    name="ML Predicted Re",
+                    marker=dict(size=11, color="#0D9488", symbol="diamond", line=dict(color="#FFFFFF", width=2)),
+                    hovertemplate="ML Predicted Re: %{y:.2f} mΩ<extra></extra>",
+                )
+            )
+        if pred_rct is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[current_cycle],
+                    y=[pred_rct * 1000.0],
+                    mode="markers",
+                    name="ML Predicted Rct",
+                    marker=dict(size=11, color="#7C3AED", symbol="diamond", line=dict(color="#FFFFFF", width=2)),
+                    hovertemplate="ML Predicted Rct: %{y:.2f} mΩ<extra></extra>",
+                )
+            )
+
+    fig.update_xaxes(title_text="Discharge Cycle Number")
+    fig.update_yaxes(title_text="Internal Resistance (mΩ)")
+    return apply_theme(fig, height=380, title=f"Cell {cell_id} · Re, Rct & Total R_int")
+
+
+def plot_multi_cell_impedance(df: pd.DataFrame, target: str = "Re") -> go.Figure:
+    """Compare impedance growth curves across core NASA cells."""
+    fig = go.Figure()
+    cell_colors = {
+        "B0005": "#2563EB",
+        "B0006": "#D97706",
+        "B0007": "#7C3AED",
+        "B0018": "#0D9488",
+    }
+    unit = "mΩ"
+    target_name = "Ohmic Re" if target == "Re" else "Charge-Transfer Rct"
+
+    for cell in ["B0005", "B0006", "B0007", "B0018"]:
+        cdf = df[df["cell"] == cell].dropna(subset=[target]).sort_values("disc_idx")
+        if not cdf.empty:
+            fig.add_trace(
+                go.Scatter(
+                    x=cdf["disc_idx"] + 1,
+                    y=cdf[target] * 1000.0,
+                    mode="lines+markers",
+                    name=f"Cell {cell}",
+                    marker=dict(size=3.5),
+                    line=dict(color=cell_colors.get(cell, "#2563EB"), width=2.0),
+                    hovertemplate="Cycle %{x}<br>" + target + ": %{y:.2f} mΩ<extra>%{fullData.name}</extra>",
+                )
+            )
+
+    fig.update_xaxes(title_text="Discharge Cycle Number")
+    fig.update_yaxes(title_text=f"{target_name} ({unit})")
+    return apply_theme(fig, height=380, title=f"Multi-Cell {target_name} Trajectory")
+
+
+def plot_soh_vs_resistance_correlation(df: pd.DataFrame, cell_id: Optional[str] = None) -> go.Figure:
+    """Plot SOH (%) on x-axis versus internal resistances (Re and Rct) on y-axis."""
+    fig = go.Figure()
+    data = df.dropna(subset=["Re", "Rct", "capacity"]).copy()
+    if cell_id and cell_id in data["cell"].unique():
+        data = data[data["cell"] == cell_id]
+
+    data["SOH_pct"] = (data["capacity"] / 2.0) * 100.0
+
+    # Scatter for Re
+    fig.add_trace(
+        go.Scatter(
+            x=data["SOH_pct"],
+            y=data["Re"] * 1000.0,
+            mode="markers",
+            name="Ohmic Re (mΩ)",
+            marker=dict(size=6, color="#0D9488", opacity=0.7),
+            hovertemplate="SOH: %{x:.1f}%<br>Re: %{y:.2f} mΩ<extra></extra>",
+        )
+    )
+
+    # Scatter for Rct
+    fig.add_trace(
+        go.Scatter(
+            x=data["SOH_pct"],
+            y=data["Rct"] * 1000.0,
+            mode="markers",
+            name="Charge-Transfer Rct (mΩ)",
+            marker=dict(size=6, color="#7C3AED", opacity=0.7),
+            hovertemplate="SOH: %{x:.1f}%<br>Rct: %{y:.2f} mΩ<extra></extra>",
+        )
+    )
+
+    # Trend lines
+    if len(data) > 5:
+        re_fit = np.polyfit(data["SOH_pct"], data["Re"] * 1000.0, 1)
+        rct_fit = np.polyfit(data["SOH_pct"], data["Rct"] * 1000.0, 1)
+        x_span = np.linspace(float(data["SOH_pct"].min()), float(data["SOH_pct"].max()), 50)
+
         fig.add_trace(
             go.Scatter(
-                x=[current_cycle],
-                y=[pred_val],
-                mode="markers",
-                name=f"ML Predicted {target}",
-                marker=dict(size=11, color="#2563EB", symbol="diamond"),
+                x=x_span,
+                y=np.polyval(re_fit, x_span),
+                mode="lines",
+                name="Re Linear Trend",
+                line=dict(color="#0D9488", width=1.8, dash="dash"),
+                hoverinfo="skip",
             )
         )
-        fig.add_vline(x=current_cycle, line_dash="dot", line_color="#2563EB", line_width=1.5)
+        fig.add_trace(
+            go.Scatter(
+                x=x_span,
+                y=np.polyval(rct_fit, x_span),
+                mode="lines",
+                name="Rct Linear Trend",
+                line=dict(color="#7C3AED", width=1.8, dash="dash"),
+                hoverinfo="skip",
+            )
+        )
 
-    fig.update_xaxes(title_text="Discharge Cycle Index")
-    fig.update_yaxes(title_text=f"{target} ({unit})")
-    return apply_theme(fig, height=330, title=f"{title_param} Evolution Over Cycling")
+    # Mark 70% EOL boundary
+    fig.add_vline(
+        x=70.0,
+        line_dash="dot",
+        line_color="#DC2626",
+        line_width=1.5,
+        annotation_text="70% EOL",
+        annotation_position="top left",
+        annotation_font=dict(size=9.5, color="#DC2626", family="JetBrains Mono"),
+    )
+
+    fig.update_xaxes(title_text="State of Health SOH (%)", autorange="reversed")
+    fig.update_yaxes(title_text="Internal Resistance (mΩ)")
+    return apply_theme(fig, height=360, title="Inverse Correlation: Resistance Growth vs Capacity Fade (SOH)")
+
+
+def plot_soh_and_rint_dual_axis(df: pd.DataFrame, cell_id: str = "B0005") -> go.Figure:
+    """Dual-axis chart: SOH degradation on Left Y-Axis, Total R_int on Right Y-Axis."""
+    data = df[df["cell"] == cell_id].dropna(subset=["Re", "Rct", "capacity"]).sort_values("disc_idx")
+    if data.empty:
+        data = df.dropna(subset=["Re", "Rct", "capacity"]).sort_values("disc_idx")
+
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+    cycles = data["disc_idx"].values + 1
+    soh = (data["capacity"].values / 2.0) * 100.0
+    r_int = (data["Re"].values + data["Rct"].values) * 1000.0  # in mΩ
+
+    # Left Y: SOH %
+    fig.add_trace(
+        go.Scatter(
+            x=cycles,
+            y=soh,
+            mode="lines+markers",
+            name="State of Health SOH (%)",
+            line=dict(color="#2563EB", width=2.4),
+            marker=dict(size=4),
+            hovertemplate="Cycle %{x}<br>SOH: %{y:.1f}%<extra></extra>",
+        ),
+        secondary_y=False,
+    )
+
+    # Right Y: Total Resistance R_int
+    fig.add_trace(
+        go.Scatter(
+            x=cycles,
+            y=r_int,
+            mode="lines+markers",
+            name="Total R_int = Re + Rct (mΩ)",
+            line=dict(color="#DC2626", width=2.2),
+            marker=dict(size=4),
+            hovertemplate="Cycle %{x}<br>R_int: %{y:.2f} mΩ<extra></extra>",
+        ),
+        secondary_y=True,
+    )
+
+    # EOL line
+    fig.add_hline(
+        y=70.0,
+        line_dash="dash",
+        line_color="#D97706",
+        line_width=1.5,
+        annotation_text="70% EOL Threshold",
+        annotation_position="bottom left",
+        secondary_y=False,
+    )
+
+    fig.update_xaxes(title_text="Discharge Cycle Number")
+    fig.update_yaxes(title_text="State of Health SOH (%)", secondary_y=False)
+    fig.update_yaxes(title_text="Total Internal Resistance (mΩ)", secondary_y=True, showgrid=False)
+    return apply_theme(fig, height=360, title=f"Cell {cell_id} · Capacity Fade vs Internal Resistance Growth")
+
+
+def plot_ml_algorithm_comparison_bars(benchmark_data: dict, target: str = "Re", mode: str = "cv") -> go.Figure:
+    """Bar chart comparing Ridge, Random Forest, Extra Trees, and XGBoost on R², MAE, and RMSE."""
+    target_data = benchmark_data.get(target, {})
+    algorithms = list(target_data.keys())
+    if not algorithms:
+        return go.Figure()
+
+    if mode == "loco":
+        r2_scores = [target_data[a]["metrics"].get("loco_r2", target_data[a]["metrics"]["r2"]) for a in algorithms]
+        mae_mohm = [target_data[a]["metrics"].get("loco_mae_mohm", target_data[a]["metrics"]["mae_mohm"]) for a in algorithms]
+        rmse_mohm = [target_data[a]["metrics"].get("loco_rmse_mohm", target_data[a]["metrics"]["rmse_mohm"]) for a in algorithms]
+    else:
+        r2_scores = [target_data[a]["metrics"]["r2"] for a in algorithms]
+        mae_mohm = [target_data[a]["metrics"]["mae_mohm"] for a in algorithms]
+        rmse_mohm = [target_data[a]["metrics"]["rmse_mohm"] for a in algorithms]
+
+    fig = make_subplots(
+        rows=1, cols=3,
+        subplot_titles=("R² Fit Score (Higher is better)", "MAE (mΩ, Lower is better)", "RMSE (mΩ, Lower is better)"),
+        horizontal_spacing=0.08,
+    )
+
+    bar_colors = ["#64748B", "#0D9488", "#2563EB", "#7C3AED"]
+
+    # 1. R²
+    fig.add_trace(
+        go.Bar(
+            x=algorithms,
+            y=r2_scores,
+            marker_color=bar_colors,
+            text=[f"{v:.3f}" for v in r2_scores],
+            textposition="auto",
+            name="R²",
+            showlegend=False,
+        ),
+        row=1, col=1,
+    )
+
+    # 2. MAE
+    fig.add_trace(
+        go.Bar(
+            x=algorithms,
+            y=mae_mohm,
+            marker_color=bar_colors,
+            text=[f"{v:.2f}" for v in mae_mohm],
+            textposition="auto",
+            name="MAE (mΩ)",
+            showlegend=False,
+        ),
+        row=1, col=2,
+    )
+
+    # 3. RMSE
+    fig.add_trace(
+        go.Bar(
+            x=algorithms,
+            y=rmse_mohm,
+            marker_color=bar_colors,
+            text=[f"{v:.2f}" for v in rmse_mohm],
+            textposition="auto",
+            name="RMSE (mΩ)",
+            showlegend=False,
+        ),
+        row=1, col=3,
+    )
+
+    fig.update_yaxes(title_text="R²", row=1, col=1)
+    fig.update_yaxes(title_text="MAE (mΩ)", row=1, col=2)
+    fig.update_yaxes(title_text="RMSE (mΩ)", row=1, col=3)
+
+    target_label = "Ohmic Resistance (Re)" if target == "Re" else "Charge-Transfer Resistance (Rct)"
+    return apply_theme(fig, height=330, title=f"Algorithm Benchmark for {target_label} (LOCO Cross-Validation)")
+
+
+def plot_actual_vs_predicted_scatter(
+    plot_records: List[Dict],
+    target: str = "Re",
+    algo_name: str = "Extra Trees",
+) -> go.Figure:
+    """Actual vs Predicted scatter plot with identity line (y=x) and error bounds."""
+    fig = go.Figure()
+    if not plot_records:
+        return fig
+
+    df_p = pd.DataFrame(plot_records)
+    y_true = df_p["actual"].values * 1000.0  # in mΩ
+    y_pred = df_p["predicted"].values * 1000.0  # in mΩ
+
+    cell_colors = {"B0005": "#2563EB", "B0006": "#D97706", "B0007": "#7C3AED", "B0018": "#0D9488"}
+
+    for cell in sorted(df_p["cell"].unique()):
+        cdf = df_p[df_p["cell"] == cell]
+        fig.add_trace(
+            go.Scatter(
+                x=cdf["actual"] * 1000.0,
+                y=cdf["predicted"] * 1000.0,
+                mode="markers",
+                name=f"Cell {cell}",
+                marker=dict(size=6, color=cell_colors.get(cell, "#2563EB"), opacity=0.8),
+                hovertemplate="Actual: %{x:.2f} mΩ<br>Pred: %{y:.2f} mΩ<extra>%{fullData.name}</extra>",
+            )
+        )
+
+    # Identity Line (y=x)
+    min_v = float(min(y_true.min(), y_pred.min())) * 0.95
+    max_v = float(max(y_true.max(), y_pred.max())) * 1.05
+    fig.add_trace(
+        go.Scatter(
+            x=[min_v, max_v],
+            y=[min_v, max_v],
+            mode="lines",
+            name="Ideal Identity (y = x)",
+            line=dict(color="#0F172A", width=1.8, dash="dash"),
+            hoverinfo="skip",
+        )
+    )
+
+    # ±10% error margin lines
+    fig.add_trace(
+        go.Scatter(
+            x=[min_v, max_v],
+            y=[min_v * 1.10, max_v * 1.10],
+            mode="lines",
+            name="+10% Error Bound",
+            line=dict(color="#CBD5E1", width=1.2, dash="dot"),
+            hoverinfo="skip",
+        )
+    )
+    fig.add_trace(
+        go.Scatter(
+            x=[min_v, max_v],
+            y=[min_v * 0.90, max_v * 0.90],
+            mode="lines",
+            name="-10% Error Bound",
+            line=dict(color="#CBD5E1", width=1.2, dash="dot"),
+            hoverinfo="skip",
+        )
+    )
+
+    target_label = "Ohmic Resistance Re" if target == "Re" else "Charge-Transfer Resistance Rct"
+    fig.update_xaxes(title_text=f"Actual Measured {target_label} (mΩ)", range=[min_v, max_v])
+    fig.update_yaxes(title_text=f"ML Predicted {target_label} (mΩ)", range=[min_v, max_v])
+    return apply_theme(fig, height=360, title=f"Actual vs Predicted {target_label} ({algo_name} · LOCO Held-Out)")
+
+
+def plot_residuals_distribution(plot_records: List[Dict], target: str = "Re") -> go.Figure:
+    """Distribution of prediction residuals (Actual - Predicted) in mΩ."""
+    fig = go.Figure()
+    if not plot_records:
+        return fig
+
+    residuals_mohm = [r["residual"] * 1000.0 for r in plot_records]
+
+    fig.add_trace(
+        go.Histogram(
+            x=residuals_mohm,
+            nbinsx=30,
+            marker_color="#2563EB",
+            opacity=0.85,
+            name="Residuals",
+        )
+    )
+
+    fig.add_vline(x=0.0, line_dash="solid", line_color="#0F172A", line_width=1.8)
+
+    target_label = "Re" if target == "Re" else "Rct"
+    fig.update_xaxes(title_text=f"Residual Error = Actual - Predicted {target_label} (mΩ)")
+    fig.update_yaxes(title_text="Count")
+    return apply_theme(fig, height=300, title=f"Prediction Error Residual Distribution ({target_label})")
+
+
+def plot_impedance_feature_importances(importances_dict: Dict[str, float], target: str = "Re") -> go.Figure:
+    """Horizontal bar chart showing top features driving Re or Rct predictions."""
+    fig = go.Figure()
+    if not importances_dict:
+        return fig
+
+    # Top 10 features
+    top_items = list(importances_dict.items())[:10]
+    feats = [item[0] for item in reversed(top_items)]
+    scores = [item[1] for item in reversed(top_items)]
+
+    feature_tooltips = {
+        "R_dc_proxy": "Initial DC voltage drop ΔV / ΔI upon current application (pure Ohmic drop)",
+        "disc_idx": "Battery cycle number representing cumulative cyclic aging and SEI thickening",
+        "V_at_60s": "Voltage after 60s of load, capturing fast electrochemical charge-transfer dynamics",
+        "V_slope_mid": "Mid-discharge voltage slope dV/dt reflecting open-circuit potential decay rate",
+        "Q_40_36": "Charge extracted between 4.0V and 3.6V (indicative of active lithium retention)",
+        "T_40_36": "Time elapsed between 4.0V and 3.6V discharge thresholds",
+        "T_rise": "Temperature rise during partial discharge caused by internal I²R dissipation",
+        "T_mean": "Mean operating cell temperature affecting electrolyte ionic mobility",
+        "V_start": "Rest open-circuit voltage at load turn-on",
+        "V_mean_first600s": "Mean voltage profile over initial 10 minutes of discharge",
+    }
+    tooltips = [feature_tooltips.get(f, f"Feature {f}") for f in feats]
+
+    fig.add_trace(
+        go.Bar(
+            y=feats,
+            x=scores,
+            orientation="h",
+            marker_color="#0D9488" if target == "Re" else "#7C3AED",
+            text=[f"{s:.3f}" for s in scores],
+            textposition="auto",
+            hovertext=tooltips,
+        )
+    )
+
+    target_label = "Ohmic Resistance (Re)" if target == "Re" else "Charge-Transfer Resistance (Rct)"
+    fig.update_xaxes(title_text="Relative Feature Importance Score")
+    fig.update_yaxes(title_text="Extracted Battery Parameter")
+    return apply_theme(fig, height=340, title=f"Key Feature Importances for {target_label} Prediction")
 
 
 def plot_gap_filling_benchmark(

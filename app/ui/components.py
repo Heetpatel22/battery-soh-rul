@@ -435,7 +435,7 @@ def render_sidebar_header():
     with st.sidebar:
         html = """
         <div style="display: flex; align-items: center; gap: 10px; padding: 4px 0 16px 0; border-bottom: 1px solid rgba(255,255,255,0.08); margin-bottom: 14px;">
-          <div style="width: 34px; height: 34px; background: rgba(37, 99, 235, 0.2); border: 1px solid #3B82F6; border-radius: 8px; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 36px; height: 36px; background: rgba(37, 99, 235, 0.2); border: 1px solid #3B82F6; border-radius: 8px; display: flex; align-items: center; justify-content: center; flex-shrink: 0;">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#60A5FA" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
               <rect x="2" y="7" width="16" height="12" rx="2"></rect>
               <path d="M20 11v4"></path>
@@ -443,21 +443,21 @@ def render_sidebar_header():
             </svg>
           </div>
           <div>
-            <div style="font-weight: 800; font-size: 1.05rem; color: #FFFFFF; letter-spacing: 0.02em;">CellGuard</div>
+            <div style="font-weight: 800; font-size: 1.10rem; color: #FFFFFF; letter-spacing: 0.02em;">CellGuard</div>
             <div style="font-size: 0.68rem; color: #94A3B8; font-family: 'Inter', sans-serif; font-weight: 500;">
-              Intelligent Battery Diagnostics &amp; Prognostics
+              Battery Diagnostics &amp; Impedance
             </div>
           </div>
         </div>
 
         <div style="background: rgba(19, 31, 63, 0.6); border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; padding: 10px 12px; margin-bottom: 16px; font-size: 0.74rem;">
-          <div style="color: #94A3B8; font-weight: 600; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">OPERATIONAL MODE</div>
+          <div style="color: #94A3B8; font-weight: 600; font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 4px;">CORE RESEARCH FOCUS</div>
           <div style="color: #10B981; font-weight: 700; display: flex; align-items: center; gap: 6px;">
             <span style="width: 7px; height: 7px; border-radius: 50%; background: #10B981;"></span>
-            Battery Diagnostics Ready
+            Re &amp; Rct Impedance Estimation
           </div>
-          <div style="color: #64748B; font-size: 0.70rem; margin-top: 3px;">
-            Partial-Window 4.0V &rarr; 3.4V Non-Destructive
+          <div style="color: #94A3B8; font-size: 0.70rem; margin-top: 3px;">
+            Partial Window (4.0V &rarr; 3.4V) &bull; LOCO Validated
           </div>
         </div>
         """
@@ -468,10 +468,13 @@ def render_sidebar_footer():
     """Render technical metadata at the bottom of the sidebar."""
     with st.sidebar:
         html = """
-        <div class="cg-sidebar-footer">
-          <div style="font-weight: 700; color: #E2E8F0; margin-bottom: 4px;">PLATFORM METADATA</div>
-          <div><strong>Reference data:</strong> NASA Ames battery cycles</div>
-          <div><strong>Insights:</strong> Capacity, lifetime, impedance, and energy</div>
+        <div class="cg-sidebar-footer" style="padding:12px; border-top:1px solid rgba(255,255,255,0.08); font-size:0.72rem; color:#94A3B8;">
+          <div style="font-weight: 700; color: #E2E8F0; margin-bottom: 4px; text-transform:uppercase; letter-spacing:0.04em;">SYSTEM METADATA</div>
+          <div><strong>Dataset:</strong> NASA Ames Li-ion 18650</div>
+          <div><strong>Core Cells:</strong> B0005, B0006, B0007, B0018</div>
+          <div><strong>Target Impedance:</strong> Re &amp; Rct (from EIS)</div>
+          <div><strong>Validation:</strong> Leave-One-Cell-Out (LOCO)</div>
+          <div style="margin-top:6px; color:#60A5FA; font-weight:600;">CellGuard &bull; 4th-Year EEE Project</div>
         </div>
         """
         render_html(html)
@@ -479,13 +482,13 @@ def render_sidebar_footer():
 
 def render_footer(metrics: dict = None):
     """Render clean application footer."""
-    html = f"""
-    <div class="cg-footer">
+    html = """
+    <div class="cg-footer" style="text-align:center; padding:16px; margin-top:28px; border-top:1px solid #E2E8F0; font-size:0.75rem; color:#64748B;">
       <div>
-        <strong>CellGuard</strong> &bull; Battery health, lifetime, impedance, and energy insights
+        <strong>CellGuard</strong> &bull; Machine Learning-Based Battery State of Health &amp; Impedance Estimation
       </div>
-      <div>
-      NASA Ames reference data &bull; Estimates use the 4.0V to 3.4V discharge window
+      <div style="margin-top:3px;">
+        NASA Ames Research Center Li-ion Aging Repository &bull; 4th-Year EEE Final Year Project
       </div>
     </div>
     """

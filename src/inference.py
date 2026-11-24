@@ -76,6 +76,14 @@ class BatteryPredictor:
         self.model_rul = _load_pkl("model_rul.pkl")
         self.model_energy = _load_pkl("model_energy.pkl")
         self.demo_holdout_models = _load_pkl("demo_holdout_B0018_models.pkl")
+        self.benchmark_models = _load_pkl("benchmark_models.pkl")
+
+        benchmark_json_path = os.path.join(self.models_dir, "ml_benchmark_re_rct.json")
+        if os.path.exists(benchmark_json_path):
+            with open(benchmark_json_path, "r", encoding="utf-8") as f:
+                self.benchmark_metrics = json.load(f)
+        else:
+            self.benchmark_metrics = {}
 
         if self.model_capacity and self.model_re and self.model_rct and self.model_rul:
             self.models_loaded = True
@@ -124,10 +132,12 @@ class BatteryPredictor:
         features: Dict[str, Any],
         disc_idx: Optional[int] = None,
         cap_history: Optional[list] = None,
+        algorithm: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Generate predictions for Capacity, SOH, Re, Rct, RUL, and Energy
         together with their verified error bands.
+        Allows specifying algorithm for Re & Rct (e.g. 'Extra Trees', 'Random Forest', 'XGBoost', 'Ridge').
         """
         if not self.models_loaded:
             raise RuntimeError(
@@ -169,39 +179,76 @@ class BatteryPredictor:
             "status": "Good (>=80%)" if pred_soh >= 80.0 else ("Degrading (70-80%)" if pred_soh >= 70.0 else "End of Life (<=70%)"),
         }
 
-        # 2. Re (Electrolyte Resistance)
-        re_feat_names = self.model_re["features"]
-        feat_dict_re = dict(features)
-        feat_dict_re["capacity"] = pred_cap
-        feat_dict_re["disc_idx"] = disc_idx if disc_idx is not None else 50
-        X_re = pd.DataFrame([feat_dict_re])[re_feat_names]
-        pred_re = float(self.model_re["pipeline"].predict(X_re)[0])
-        re_err = self.error_bands.get("re_mae_loco", 0.0066)
+        # Resolve model pipelines for Re & Rct
+        re_pipe = None
+        rct_pipe = None
+        algo_name = algorithm or self.model_re.get("model_type", "Extra Trees")
+        if algorithm and hasattr(self, "benchmark_models") and self.benchmark_models:
+            if "Re" in self.benchmark_models and algorithm in self.benchmark_models["Re"]:
+                re_pipe = self.benchmark_models["Re"][algorithm]
+            if "Rct" in self.benchmark_models and algorithm in self.benchmark_models["Rct"]:
+                rct_pipe = self.benchmark_models["Rct"][algorithm]
+
+        if re_pipe is None:
+            re_pipe = self.model_re["pipeline"]
+        if rct_pipe is None:
+            rct_pipe = self.model_rct["pipeline"]
+
+        # Build feature vector for Re & Rct
+        feat_dict_imp = dict(features)
+        feat_dict_imp["disc_idx"] = disc_idx if disc_idx is not None else 50
+        feat_dict_imp["capacity"] = pred_cap
+
+        # 2. Re (Ohmic Resistance)
+        def _get_input_cols(pipe, fallback_cols):
+            cols = getattr(pipe, "feature_names_in_", None)
+            if cols is None and hasattr(pipe, "steps"):
+                cols = getattr(pipe.steps[0][1], "feature_names_in_", None)
+            return list(cols) if cols is not None else fallback_cols
+
+        re_cols = _get_input_cols(re_pipe, self.model_re.get("features", []))
+        X_re = pd.DataFrame([feat_dict_imp])[[c for c in re_cols if c in feat_dict_imp]]
+        pred_re = float(re_pipe.predict(X_re)[0])
+        re_err = self.error_bands.get("re_mae_loco", 0.0061)
 
         preds["Re"] = {
             "value": round(pred_re, 5),
+            "value_mohm": round(pred_re * 1000.0, 2),
             "unit": "Ω",
             "error_band": round(re_err, 5),
             "ci_low": round(max(0.001, pred_re - re_err), 5),
             "ci_high": round(pred_re + re_err, 5),
-            "caveat": "LOCO MAE shown as error band. In single cells, impedance drift is small so relative tracking is advised.",
+            "algorithm": algo_name,
+            "caveat": "LOCO MAE shown as error band across unseen cell holdouts.",
         }
 
         # 3. Rct (Charge-Transfer Resistance)
-        rct_feat_names = self.model_rct["features"]
-        feat_dict_rct = dict(features)
-        feat_dict_rct["capacity"] = pred_cap
-        feat_dict_rct["disc_idx"] = disc_idx if disc_idx is not None else 50
-        X_rct = pd.DataFrame([feat_dict_rct])[rct_feat_names]
-        pred_rct = float(self.model_rct["pipeline"].predict(X_rct)[0])
-        rct_err = self.error_bands.get("rct_mae_loco", 0.0055)
+        rct_cols = _get_input_cols(rct_pipe, self.model_rct.get("features", []))
+        X_rct = pd.DataFrame([feat_dict_imp])[[c for c in rct_cols if c in feat_dict_imp]]
+        pred_rct = float(rct_pipe.predict(X_rct)[0])
+        rct_err = self.error_bands.get("rct_mae_loco", 0.0057)
 
         preds["Rct"] = {
             "value": round(pred_rct, 5),
+            "value_mohm": round(pred_rct * 1000.0, 2),
             "unit": "Ω",
             "error_band": round(rct_err, 5),
             "ci_low": round(max(0.001, pred_rct - rct_err), 5),
             "ci_high": round(pred_rct + rct_err, 5),
+            "algorithm": algo_name,
+        }
+
+        # Total Internal Resistance: R_int = Re + Rct
+        pred_rint = pred_re + pred_rct
+        rint_err = float(np.sqrt(re_err**2 + rct_err**2))
+        preds["R_int"] = {
+            "value": round(pred_rint, 5),
+            "value_mohm": round(pred_rint * 1000.0, 2),
+            "unit": "Ω",
+            "error_band": round(rint_err, 5),
+            "ci_low": round(max(0.001, pred_rint - rint_err), 5),
+            "ci_high": round(pred_rint + rint_err, 5),
+            "algorithm": algo_name,
         }
 
         # 4. RUL (Remaining Useful Life in cycles)
@@ -297,14 +344,21 @@ class BatteryPredictor:
         rct_pipe = holdout["Rct"]
         rul_pipe = holdout["rul"]
 
-        # Feature lists from feature_schema.json -> model_feature_lists
+        def _get_pipe_cols(pipe, fallback):
+            cols = getattr(pipe, "feature_names_in_", None)
+            if cols is None and hasattr(pipe, "steps"):
+                cols = getattr(pipe.steps[0][1], "feature_names_in_", None)
+            return list(cols) if cols is not None else fallback
+
+        # Feature lists
         schema_lists = self.schema.get("model_feature_lists", {})
-        cap_feats = schema_lists.get("capacity", PARTIAL_WINDOW_FEATURE_NAMES)
-        re_rct_feats = schema_lists.get("re_rct", list(PARTIAL_WINDOW_FEATURE_NAMES) + ["capacity", "disc_idx"])
-        rul_feats = schema_lists.get("rul", list(PARTIAL_WINDOW_FEATURE_NAMES) + ["capacity", "disc_idx", "cap_slope_5", "cap_slope_10"])
+        cap_feats = _get_pipe_cols(cap_pipe, schema_lists.get("capacity", PARTIAL_WINDOW_FEATURE_NAMES))
+        re_feats = _get_pipe_cols(re_pipe, list(PARTIAL_WINDOW_FEATURE_NAMES) + ["capacity", "disc_idx"])
+        rct_feats = _get_pipe_cols(rct_pipe, list(PARTIAL_WINDOW_FEATURE_NAMES) + ["capacity", "disc_idx"])
+        rul_feats = _get_pipe_cols(rul_pipe, list(PARTIAL_WINDOW_FEATURE_NAMES) + ["capacity", "disc_idx", "cap_slope_5", "cap_slope_10"])
 
         # 1. Capacity
-        X_cap = pd.DataFrame([features])[cap_feats]
+        X_cap = pd.DataFrame([features])[[c for c in cap_feats if c in features]]
         pred_cap = float(cap_pipe.predict(X_cap)[0])
         pred_soh = (pred_cap / RATED_CAPACITY_AH) * 100.0
         cap_err = self.error_bands.get("capacity_mae_loco", 0.0464)
@@ -314,9 +368,10 @@ class BatteryPredictor:
         feat_dict = dict(features)
         feat_dict["capacity"] = pred_cap
         feat_dict["disc_idx"] = disc_idx if disc_idx is not None else 50
-        X_imp = pd.DataFrame([feat_dict])[re_rct_feats]
-        pred_re = float(re_pipe.predict(X_imp)[0])
-        pred_rct = float(rct_pipe.predict(X_imp)[0])
+        X_re = pd.DataFrame([feat_dict])[[c for c in re_feats if c in feat_dict]]
+        X_rct = pd.DataFrame([feat_dict])[[c for c in rct_feats if c in feat_dict]]
+        pred_re = float(re_pipe.predict(X_re)[0])
+        pred_rct = float(rct_pipe.predict(X_rct)[0])
         re_err = self.error_bands.get("re_mae_loco", 0.0066)
         rct_err = self.error_bands.get("rct_mae_loco", 0.0055)
 

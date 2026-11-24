@@ -1,4 +1,8 @@
-"""CellGuard multi-page battery health workspace."""
+"""
+streamlit_app.py - CellGuard Battery Intelligence Platform.
+Machine Learning-Based Battery State of Health, Impedance and Remaining Useful Life Estimation.
+4th-Year EEE Final Year Project Edition.
+"""
 
 import json
 import os
@@ -17,16 +21,17 @@ for path in (SRC_DIR, APP_DIR, ROOT_DIR):
 
 from inference import BatteryPredictor
 from ui.components import inject_theme, render_footer, render_sidebar_footer, render_sidebar_header
-from ui.pages.calculation_metrics import render_calculation_metrics
-from ui.pages.gap_filler import render_gap_filler
+from ui.pages.about_project import render_about_project
+from ui.pages.ee_background import render_ee_background
 from ui.pages.impedance import render_impedance
-from ui.pages.life_rul import render_life_rul
+from ui.pages.impedance_lab import render_impedance_lab
 from ui.pages.overview import render_overview
+from ui.pages.performance import render_performance
 from ui.pages.predict import render_predict
 from ui.pages.soc_soh import render_soc_soh
 
 st.set_page_config(
-    page_title="CellGuard · Battery Health Studio",
+    page_title="CellGuard · Battery Impedance & Diagnostics",
     page_icon="⚡",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -65,55 +70,51 @@ def _page(render_fn, *args):
     render_sidebar_header()
     render_fn(*args)
     render_sidebar_footer()
-    render_footer()
+    render_footer(metrics)
 
 
 def overview_page():
-    workspace_pages = {
-        "Battery Health Check": battery_health_page,
-        "Calculation Metrics": calculation_metrics_page,
-        "Battery Life": battery_life_page,
-    }
-    _page(render_overview, predictor, metrics, feature_table, workspace_pages)
-
-
-def calculation_page():
-    _page(render_calculation_metrics, feature_table)
+    _page(render_overview, predictor, metrics, feature_table)
 
 
 def diagnostics_page():
     _page(render_predict, predictor, schema, metrics)
 
 
-def soh_page():
-    _page(render_soc_soh, predictor, feature_table, metrics)
-
-
-def rul_page():
-    _page(render_life_rul, predictor, feature_table, metrics)
+def impedance_lab_page():
+    _page(render_impedance_lab, predictor, feature_table, metrics)
 
 
 def impedance_page():
     _page(render_impedance, predictor, feature_table, metrics)
 
 
-def gap_page():
-    _page(render_gap_filler, predictor, feature_table, metrics)
+def soh_page():
+    _page(render_soc_soh, predictor, feature_table, metrics)
 
 
-overview_nav_page = st.Page(overview_page, title="Overview", icon="📊", default=True)
-calculation_metrics_page = st.Page(calculation_page, title="Calculation Metrics", icon="🧮")
-battery_health_page = st.Page(diagnostics_page, title="Battery Health Check", icon="🩺")
-battery_life_page = st.Page(rul_page, title="Battery Life", icon="⏳")
+def performance_page():
+    _page(render_performance, metrics)
 
+
+def ee_page():
+    _page(render_ee_background)
+
+
+def about_page():
+    _page(render_about_project, metrics)
+
+
+# Navigation Pages Definition
 pages = [
-    overview_nav_page,
-    calculation_metrics_page,
-    battery_health_page,
-    st.Page(soh_page, title="SOH & SOC", icon="⚡"),
-    battery_life_page,
-    st.Page(impedance_page, title="Impedance History", icon="🔬"),
-    st.Page(gap_page, title="Fill Missing Readings", icon="🧩"),
+    st.Page(overview_page, title="Overview", icon="📊", default=True),
+    st.Page(diagnostics_page, title="Re & Rct Prediction", icon="🔬"),
+    st.Page(impedance_lab_page, title="Impedance Lab & Availability", icon="🧪"),
+    st.Page(impedance_page, title="Resistance Trends", icon="📈"),
+    st.Page(soh_page, title="SOH vs Resistance", icon="⚡"),
+    st.Page(performance_page, title="ML Comparison & LOCO", icon="🏆"),
+    st.Page(ee_page, title="EE Circuit & Power Loss", icon="📐"),
+    st.Page(about_page, title="About & Methodology", icon="📘"),
 ]
 
 st.navigation(pages).run()

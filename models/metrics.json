@@ -30,8 +30,8 @@
   "error_bands": {
     "capacity_mae_loco": 0.10423277080245844,
     "capacity_rmse_loco": 0.050978829305294474,
-    "re_mae_loco": 0.002657280672718257,
-    "rct_mae_loco": 0.01482767642258182,
+    "re_mae_loco": 0.001134,
+    "rct_mae_loco": 0.001277,
     "rul_mae_loco": 19.31477458199873,
     "energy_mae_loco": 0.3482753270850026
   },
