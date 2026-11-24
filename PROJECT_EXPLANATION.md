@@ -201,3 +201,4 @@ This explains why aging batteries get hot much faster and can trigger thermal al
 
 ---
 *Created for CellGuard · 4th-Year Electrical & Electronic Engineering (EEE) Final Year Project.*
+

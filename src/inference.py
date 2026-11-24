@@ -66,8 +66,12 @@ class BatteryPredictor:
         def _load_pkl(fname):
             p = os.path.join(self.models_dir, fname)
             if os.path.exists(p):
-                data = joblib.load(p)
-                return data
+                try:
+                    data = joblib.load(p)
+                    return data
+                except Exception as ex:
+                    print(f"Warning: could not unpickle {fname}: {ex}")
+                    return None
             return None
 
         self.model_capacity = _load_pkl("model_capacity.pkl")
